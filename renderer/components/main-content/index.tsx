@@ -346,6 +346,7 @@ const MainContent = ({
             sanitizedImagePath={sanitizedImagePath}
             sanitizedUpscaledImagePath={sanitizedUpscaledImagePath}
             zoomAmount={zoomAmount}
+            setZoomAmount={setZoomAmount}
           />
         )}
     </div>
