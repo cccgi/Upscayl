@@ -7,6 +7,8 @@ import {
   batchModeAtom,
   savedOutputPathAtom,
   progressAtom,
+  progressInfoAtom,
+  initialProgressInfo,
   rememberOutputFolderAtom,
   userStatsAtom,
 } from "../atoms/user-settings-atom";
@@ -45,6 +47,7 @@ const Home = () => {
   const [batchFolderPath, setBatchFolderPath] = useState("");
   const [upscaledBatchFolderPath, setUpscaledBatchFolderPath] = useState("");
   const setProgress = useSetAtom(progressAtom);
+  const setProgressInfo = useSetAtom(progressInfoAtom);
   const [doubleUpscaylCounter, setDoubleUpscaylCounter] = useState(0);
   const setModelIds = useSetAtom(customModelIdsAtom);
   const setUserStats = useSetAtom(userStatsAtom);
@@ -97,6 +100,103 @@ const Home = () => {
       }
     } else {
       resetImagePaths();
+    }
+  };
+
+  // Helper to parse detailed engine progress
+  const processProgressData = (data: string) => {
+    if (!data) return;
+    const trimmed = data.trim();
+
+    setProgressInfo((prev) => {
+      const next = { ...prev };
+      if (!next.startTime) {
+        next.startTime = Date.now();
+      }
+
+      // Percentage extraction (e.g. "25.00%", "50%")
+      const pctMatch = trimmed.match(/(\d+(?:\.\d+)?)%/);
+      if (pctMatch) {
+        const val = parseFloat(pctMatch[1]);
+        next.percent = Math.min(100, Math.max(0, val));
+        setProgress(`${val.toFixed(1)}%`);
+      }
+
+      // Phase identification
+      if (
+        trimmed.includes("Phase 1:") ||
+        trimmed.toLowerCase().includes("vae encode") ||
+        trimmed.toLowerCase().includes("encoding")
+      ) {
+        next.phaseIndex = 1;
+        next.phaseName = "Phase 1/4: Latent Encoding";
+        next.phaseDesc = "Mapping image pixels into deep latent tensor space";
+        next.detailMessage = trimmed;
+      } else if (
+        trimmed.includes("Phase 2:") ||
+        trimmed.toLowerCase().includes("dit") ||
+        trimmed.toLowerCase().includes("diffusion")
+      ) {
+        next.phaseIndex = 2;
+        next.phaseName = "Phase 2/4: DiT Diffusion Super-Resolution";
+        next.phaseDesc = "Synthesizing fine facial features, micro-pores & textures";
+        next.detailMessage = trimmed;
+      } else if (
+        trimmed.includes("Phase 3:") ||
+        trimmed.toLowerCase().includes("vae decode") ||
+        trimmed.toLowerCase().includes("decoding")
+      ) {
+        next.phaseIndex = 3;
+        next.phaseName = "Phase 3/4: High-Fidelity Decoding";
+        next.phaseDesc = "Decoding latent tokens into full-resolution RGB image";
+        next.detailMessage = trimmed;
+      } else if (
+        trimmed.includes("Phase 4:") ||
+        trimmed.toLowerCase().includes("color correction") ||
+        trimmed.toLowerCase().includes("blending")
+      ) {
+        next.phaseIndex = 4;
+        next.phaseName = "Phase 4/4: Color Harmonization";
+        next.phaseDesc = "Matching perceptual LAB color balance & post-processing";
+        next.detailMessage = trimmed;
+      } else if (
+        trimmed.toLowerCase().includes("tiled inference") ||
+        trimmed.toLowerCase().includes("tile")
+      ) {
+        next.phaseIndex = 2;
+        next.phaseName = "Tiled Transformer Inference";
+        next.phaseDesc = "Processing high-res patches with Hann-cosine feathering";
+        next.detailMessage = trimmed;
+      } else if (
+        trimmed.toLowerCase().includes("loading model") ||
+        trimmed.toLowerCase().includes("spandrel")
+      ) {
+        next.phaseIndex = 1;
+        next.phaseName = "Loading Neural Model";
+        next.phaseDesc = "Initializing PyTorch CUDA weights & tensor pipeline";
+        next.detailMessage = trimmed;
+      } else if (
+        trimmed.toLowerCase().includes("resizing") ||
+        trimmed.toLowerCase().includes("converting") ||
+        trimmed.toLowerCase().includes("scaling")
+      ) {
+        next.phaseIndex = 4;
+        next.phaseName = "Final Scaling & Output";
+        next.phaseDesc = "Lanczos anti-aliased resampling & format export";
+        next.detailMessage = trimmed;
+      } else if (trimmed.length > 5 && !pctMatch) {
+        next.detailMessage = trimmed;
+      }
+
+      return next;
+    });
+
+    if (trimmed.length > 0 && trimmed.length < 10) {
+      setProgress(trimmed);
+    } else if (trimmed.includes("converting")) {
+      setProgress(t("APP.PROGRESS.SCALING_CONVERTING_TITLE"));
+    } else if (trimmed.includes("Successful")) {
+      setProgress(t("APP.PROGRESS.SUCCESS_TITLE"));
     }
   };
 
@@ -164,10 +264,12 @@ const Home = () => {
         resetImagePaths();
       }
     };
+
     // LOG
     window.electron.on(ELECTRON_COMMANDS.LOG, (_, data: string) => {
       logit(`🎒 BACKEND REPORTED: `, data);
     });
+
     // SCALING AND CONVERTING
     window.electron.on(
       ELECTRON_COMMANDS.SCALING_AND_CONVERTING,
@@ -175,6 +277,7 @@ const Home = () => {
         setProgress(t("APP.PROGRESS.PROCESSING_TITLE"));
       },
     );
+
     // UPSCAYL WARNING
     window.electron.on(ELECTRON_COMMANDS.UPSCAYL_WARNING, (_, data: string) => {
       toast({
@@ -182,6 +285,7 @@ const Home = () => {
         description: data,
       });
     });
+
     // METADATA ERROR
     window.electron.on(ELECTRON_COMMANDS.METADATA_ERROR, (_, data: string) => {
       toast({
@@ -189,6 +293,7 @@ const Home = () => {
         description: data,
       });
     });
+
     // UPSCAYL ERROR
     window.electron.on(ELECTRON_COMMANDS.UPSCAYL_ERROR, (_, data: string) => {
       toast({
@@ -197,52 +302,44 @@ const Home = () => {
       });
       resetImagePaths();
     });
+
     // UPSCAYL PROGRESS
     window.electron.on(
       ELECTRON_COMMANDS.UPSCAYL_PROGRESS,
       (_, data: string) => {
-        if (data.length > 0 && data.length < 10) {
-          setProgress(data);
-        } else if (data.includes("converting")) {
-          setProgress(t("APP.PROGRESS.SCALING_CONVERTING_TITLE"));
-        } else if (data.includes("Successful")) {
-          setProgress(t("APP.PROGRESS.SUCCESS_TITLE"));
-        }
+        processProgressData(data);
         handleErrors(data);
         logit(`🚧 UPSCAYL_PROGRESS: `, data);
       },
     );
+
     // FOLDER UPSCAYL PROGRESS
     window.electron.on(
       ELECTRON_COMMANDS.FOLDER_UPSCAYL_PROGRESS,
       (_, data: string) => {
-        if (data.includes("Successful")) {
-          setProgress(t("APP.PROGRESS.SUCCESS_TITLE"));
-        }
-        if (data.length > 0 && data.length < 10) {
-          setProgress(data);
-        }
+        processProgressData(data);
         handleErrors(data);
         logit(`🚧 FOLDER_UPSCAYL_PROGRESS: `, data);
       },
     );
+
     // DOUBLE UPSCAYL PROGRESS
     window.electron.on(
       ELECTRON_COMMANDS.DOUBLE_UPSCAYL_PROGRESS,
       (_, data: string) => {
-        if (data.length > 0 && data.length < 10) {
-          if (data === "0.00%") {
-            setDoubleUpscaylCounter(doubleUpscaylCounter + 1);
-          }
-          setProgress(data);
+        if (data.includes("0.00%")) {
+          setDoubleUpscaylCounter((prev) => prev + 1);
         }
+        processProgressData(data);
         handleErrors(data);
         logit(`🚧 DOUBLE_UPSCAYL_PROGRESS: `, data);
       },
     );
+
     // UPSCAYL DONE
     window.electron.on(ELECTRON_COMMANDS.UPSCAYL_DONE, (_, data: string) => {
       setProgress("");
+      setProgressInfo(initialProgressInfo);
       setUpscaledImagePath(data);
       setUserStats((prev) => ({
         ...prev,
@@ -255,11 +352,13 @@ const Home = () => {
       logit("upscaledImagePath: ", data);
       logit(`💯 UPSCAYL_DONE: `, data);
     });
+
     // FOLDER UPSCAYL DONE
     window.electron.on(
       ELECTRON_COMMANDS.FOLDER_UPSCAYL_DONE,
       (_, data: string) => {
         setProgress("");
+        setProgressInfo(initialProgressInfo);
         setUpscaledBatchFolderPath(data);
         logit(`💯 FOLDER_UPSCAYL_DONE: `, data);
         setUserStats((prev) => ({
@@ -272,11 +371,13 @@ const Home = () => {
         }));
       },
     );
+
     // DOUBLE UPSCAYL DONE
     window.electron.on(
       ELECTRON_COMMANDS.DOUBLE_UPSCAYL_DONE,
       (_, data: string) => {
         setProgress("");
+        setProgressInfo(initialProgressInfo);
         setTimeout(() => setUpscaledImagePath(data), 500);
         setDoubleUpscaylCounter(0);
         logit(`💯 DOUBLE_UPSCAYL_DONE: `, data);
@@ -290,6 +391,7 @@ const Home = () => {
         }));
       },
     );
+
     // CUSTOM FOLDER LISTENER
     window.electron.on(
       ELECTRON_COMMANDS.CUSTOM_MODEL_FILES_LIST,
@@ -319,6 +421,7 @@ const Home = () => {
       height: null,
     });
     setProgress("");
+    setProgressInfo(initialProgressInfo);
     setImagePath("");
     setUpscaledImagePath("");
     setBatchFolderPath("");

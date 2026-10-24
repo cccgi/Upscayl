@@ -24,6 +24,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
     handleMouseMove,
     handleMouseDown,
     handleMouseUp,
+    handleContextMenu,
     zoomPercent,
   } = useMouseZoom({
     minZoom: 1.0,
@@ -43,6 +44,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onContextMenu={handleContextMenu}
       onDoubleClick={(e) => {
         if (zoom > 1.0) {
           e.stopPropagation();
@@ -50,7 +52,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
         }
       }}
       style={{
-        cursor: zoom > 1.0 ? (isDragging ? "grabbing" : "grab") : "default",
+        cursor: isDragging ? "grabbing" : zoom > 1.0 ? "grab" : "default",
       }}
     >
       <img

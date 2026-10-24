@@ -40,6 +40,28 @@ export const savedOutputPathAtom = atomWithStorage<string | null>(
 
 export const progressAtom = atom<string>("");
 
+export interface ProgressInfo {
+  percent: number;
+  phaseName: string;
+  phaseDesc: string;
+  phaseIndex: number;
+  totalPhases: number;
+  detailMessage: string;
+  startTime: number;
+}
+
+export const initialProgressInfo: ProgressInfo = {
+  percent: 0,
+  phaseName: "Initializing Engine",
+  phaseDesc: "Preparing neural network & tensor buffers",
+  phaseIndex: 1,
+  totalPhases: 4,
+  detailMessage: "Starting super-resolution engine...",
+  startTime: 0,
+};
+
+export const progressInfoAtom = atom<ProgressInfo>(initialProgressInfo);
+
 export const rememberOutputFolderAtom = atomWithStorage<boolean>(
   "rememberOutputFolder",
   false,

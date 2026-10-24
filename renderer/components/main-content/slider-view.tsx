@@ -31,6 +31,7 @@ const SliderView: React.FC<SliderViewProps> = ({
     handleMouseMove,
     handleMouseDown,
     handleMouseUp,
+    handleContextMenu,
     zoomPercent,
     setZoom,
   } = useMouseZoom({
@@ -60,6 +61,7 @@ const SliderView: React.FC<SliderViewProps> = ({
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onContextMenu={handleContextMenu}
       onDoubleClick={(e) => {
         if (zoom > 1.0) {
           e.stopPropagation();
@@ -67,7 +69,7 @@ const SliderView: React.FC<SliderViewProps> = ({
         }
       }}
       style={{
-        cursor: zoom > 1.0 ? (isDragging ? "grabbing" : "grab") : "default",
+        cursor: isDragging ? "grabbing" : zoom > 1.0 ? "grab" : "default",
       }}
     >
       <div

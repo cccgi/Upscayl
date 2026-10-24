@@ -10,7 +10,7 @@ interface UseMouseZoomOptions {
 
 export function useMouseZoom({
   minZoom = 1.0,
-  maxZoom = 10.0,
+  maxZoom = 12.0,
   zoomStep = 0.15,
   initialZoom = 1.0,
   onZoomChange,
@@ -20,6 +20,7 @@ export function useMouseZoom({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -50,7 +51,7 @@ export function useMouseZoom({
     });
   }, [minZoom, onZoomChange, resetZoom]);
 
-  // Track cursor position to anchor zoom origin
+  // Track cursor position to anchor zoom origin and perform drag panning
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!containerRef.current) return;
@@ -59,7 +60,7 @@ export function useMouseZoom({
       const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
       const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
 
-      if (isDragging) {
+      if (isDraggingRef.current) {
         setPan({
           x: e.clientX - dragStartRef.current.x,
           y: e.clientY - dragStartRef.current.y,
@@ -68,13 +69,23 @@ export function useMouseZoom({
         setOrigin({ x, y });
       }
     },
-    [isDragging, zoom],
+    [zoom],
   );
 
+  // Mouse Down: Right-click (button 2) always pans; Middle-click (button 1) always pans;
+  // Left-click (button 0) pans when zoomed in
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (zoom > 1.0 && (e.button === 0 || e.button === 1)) {
+      // Button 2 = Right click, Button 1 = Middle click, Button 0 = Left click
+      const isRightClick = e.button === 2;
+      const isMiddleClick = e.button === 1;
+      const isLeftClickZoomed = e.button === 0 && zoom > 1.0;
+
+      if (isRightClick || isMiddleClick || isLeftClickZoomed) {
+        e.preventDefault();
+        e.stopPropagation();
         setIsDragging(true);
+        isDraggingRef.current = true;
         dragStartRef.current = {
           x: e.clientX - pan.x,
           y: e.clientY - pan.y,
@@ -84,11 +95,33 @@ export function useMouseZoom({
     [zoom, pan],
   );
 
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
+  const handleMouseUp = useCallback((e?: React.MouseEvent) => {
+    if (isDraggingRef.current) {
+      setIsDragging(false);
+      isDraggingRef.current = false;
+    }
   }, []);
 
-  // Attach non-passive wheel event listener to container
+  // Suppress context menu on right click / drag
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+  }, []);
+
+  // Global mouseup to release drag even outside container
+  useEffect(() => {
+    const onGlobalMouseUp = () => {
+      if (isDraggingRef.current) {
+        setIsDragging(false);
+        isDraggingRef.current = false;
+      }
+    };
+    window.addEventListener("mouseup", onGlobalMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", onGlobalMouseUp);
+    };
+  }, []);
+
+  // Attach non-passive wheel event listener to container for smooth zooming
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -141,6 +174,7 @@ export function useMouseZoom({
     handleMouseMove,
     handleMouseDown,
     handleMouseUp,
+    handleContextMenu,
     zoomPercent: Math.round(zoom * 100),
   };
 }

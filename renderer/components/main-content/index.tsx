@@ -267,25 +267,20 @@ const MainContent = ({
 
   return (
     <div
-      className="relative flex h-screen w-full flex-col items-center justify-center"
+      className="relative flex h-screen w-full flex-col items-center justify-center overflow-hidden"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
-      onDoubleClick={batchMode ? selectFolderHandler : selectImageHandler}
+      onDoubleClick={
+        progress.length > 0
+          ? undefined
+          : batchMode
+          ? selectFolderHandler
+          : selectImageHandler
+      }
     >
       <MacTitlebarDragRegion />
-
-      {progress.length > 0 &&
-        upscaledImagePath.length === 0 &&
-        upscaledBatchFolderPath.length === 0 && (
-          <ProgressBar
-            batchMode={batchMode}
-            progress={progress}
-            doubleUpscaylCounter={doubleUpscaylCounter}
-            resetImagePaths={resetImagePaths}
-          />
-        )}
 
       {/* DEFAULT PANE INFO */}
       {showInformationCard && (
@@ -298,10 +293,22 @@ const MainContent = ({
         resetImagePaths={resetImagePaths}
       />
 
-      {/* SHOW SELECTED IMAGE */}
+      {/* SHOW SELECTED IMAGE (REMAINS VISIBLE & INTERACTIVE DURING UPSCALE) */}
       {!batchMode && upscaledImagePath.length === 0 && imagePath.length > 0 && (
         <ImageViewer imagePath={imagePath} setDimensions={setDimensions} />
       )}
+
+      {/* UPSCALE IN PROGRESS OVERLAY & FLOATING HUD CARD */}
+      {progress.length > 0 &&
+        upscaledImagePath.length === 0 &&
+        upscaledBatchFolderPath.length === 0 && (
+          <ProgressBar
+            batchMode={batchMode}
+            progress={progress}
+            doubleUpscaylCounter={doubleUpscaylCounter}
+            resetImagePaths={resetImagePaths}
+          />
+        )}
 
       {/* BATCH UPSCALE SHOW SELECTED FOLDER */}
       {batchMode &&

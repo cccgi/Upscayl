@@ -1,28 +1,73 @@
-import React, { useEffect } from "react";
+"use client";
+
+import React, { useEffect, useState, useMemo } from "react";
 import UpscaylSVGLogo from "@/components/icons/upscayl-logo-svg";
 import { useAtomValue } from "jotai";
 import { translationAtom } from "@/atoms/translations-atom";
+import {
+  progressInfoAtom,
+  selectedModelIdAtom,
+} from "@/atoms/user-settings-atom";
 import { ELECTRON_COMMANDS } from "@common/electron-commands";
 import useLogger from "../hooks/use-logger";
+import {
+  Sparkles,
+  Cpu,
+  Layers,
+  Timer,
+  X,
+  CheckCircle2,
+  Activity,
+  ArrowRight,
+  FolderSync,
+} from "lucide-react";
+
+interface ProgressBarProps {
+  progress: string;
+  doubleUpscaylCounter: number;
+  batchMode: boolean;
+  resetImagePaths: () => void;
+}
+
+const PHASES = [
+  { index: 1, label: "Encode", short: "Latent Prep" },
+  { index: 2, label: "Super-Resolution", short: "AI Upscale" },
+  { index: 3, label: "Decode", short: "Pixel Synth" },
+  { index: 4, label: "Harmonize", short: "Export" },
+];
 
 function ProgressBar({
   progress,
   doubleUpscaylCounter,
   batchMode,
   resetImagePaths,
-}: {
-  progress: string;
-  doubleUpscaylCounter: number;
-  batchMode: boolean;
-  resetImagePaths: () => void;
-}) {
-  const [batchProgress, setBatchProgress] = React.useState(0);
+}: ProgressBarProps) {
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
   const t = useAtomValue(translationAtom);
   const logit = useLogger();
+  const progressInfo = useAtomValue(progressInfoAtom);
+  const selectedModelId = useAtomValue(selectedModelIdAtom);
 
+  // Live stopwatch timer
+  useEffect(() => {
+    setElapsedSeconds(0);
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formattedTime = useMemo(() => {
+    const mins = Math.floor(elapsedSeconds / 60);
+    const secs = elapsedSeconds % 60;
+    return `${mins < 10 ? "0" : ""}${mins}:${secs < 10 ? "0" : ""}${secs}s`;
+  }, [elapsedSeconds]);
+
+  // Batch progress counting
   useEffect(() => {
     const progressString = progress.trim().replace(/\n/g, "");
-    // Remove trailing and leading spaces
     if (progressString.includes("Successful")) {
       setBatchProgress((prev) => prev + 1);
     }
@@ -33,51 +78,158 @@ function ProgressBar({
     logit("🛑 Stopping Upscayl");
   };
 
-  // const progressStyle = useMemo(() => {
-  //   if (progress.includes("%")) {
-  //     return {
-  //       "--value": parseFloat(progress.replace("%", "")),
-  //     };
-  //   } else if (progress.includes("Success")) {
-  //     return {
-  //       "--value": 100,
-  //     };
-  //   }
-  //   return {
-  //     "--value": 0,
-  //   };
-  // }, [progress]);
+  // Determine current display percentage
+  const currentPct = useMemo(() => {
+    if (progressInfo.percent > 0) return progressInfo.percent;
+    const match = progress.match(/(\d+(?:\.\d+)?)%/);
+    if (match) return parseFloat(match[1]);
+    return 0;
+  }, [progressInfo.percent, progress]);
+
+  const activePhase = progressInfo.phaseIndex || 1;
+
+  const modelDisplay = useMemo(() => {
+    if (!selectedModelId) return "AI Upscaler";
+    const clean = selectedModelId.replace(/\.(pth|safetensors|bin|onnx)$/i, "");
+    if (clean.includes("FaceUpDAT")) return "FaceUpDAT (Face & Skin SOTA)";
+    if (clean.includes("seedvr2_ema_7b_fp16")) return "SeedVR2 7B (Official SOTA)";
+    if (clean.includes("seedvr2_ema_7b_sharp")) return "SeedVR2 7B Sharp (DiT)";
+    if (clean.includes("seedvr2_ema_3b")) return "SeedVR2 3B DiT";
+    if (clean.includes("RealWebPhoto") || clean.includes("dat2")) return "DAT-2 Transformer";
+    if (clean.includes("UltraSharp")) return "UltraSharp Super-Res";
+    return clean.replace(/_/g, " ");
+  }, [selectedModelId]);
 
   return (
-    <div className="absolute z-50 flex h-full w-full flex-col items-center justify-center bg-base-300/50 backdrop-blur-lg">
-      <div className="flex flex-col items-center gap-2 rounded-btn bg-base-100/50 p-4 backdrop-blur-lg">
-        <UpscaylSVGLogo className="spinner h-12 w-12" />
+    <div className="pointer-events-none absolute inset-0 z-40 flex flex-col justify-between overflow-hidden select-none">
+      {/* SCANNING LASER SWEEP LINE OVER CANVAS */}
+      <div className="ai-scan-line" />
 
-        <p className="rounded-full px-2 pb-2 font-bold">
-          {batchMode &&
-            `${t("APP.PROGRESS_BAR.BATCH_UPSCAYL_IN_PROGRESS_TITLE")} ${batchProgress}`}
-        </p>
+      {/* TOP SUBTLE AMBIENT GRADIENT */}
+      <div className="h-20 w-full bg-gradient-to-b from-base-300/60 to-transparent pointer-events-none" />
 
-        <div className="flex flex-col items-center gap-1">
-          {progress !== "Hold on..." ? (
-            <p className="text-sm font-bold">
-              {progress}
-              {!batchMode &&
-                doubleUpscaylCounter > 0 &&
-                "\nPass " + doubleUpscaylCounter}
-            </p>
-          ) : (
-            <p className="text-sm font-bold">{progress}</p>
+      {/* BOTTOM AMBIENT GRADIENT & FLOATING HUD PROGRESS CARD */}
+      <div className="flex w-full flex-col items-center justify-end pb-7 pointer-events-none bg-gradient-to-t from-base-300/90 via-base-300/40 to-transparent pt-12">
+        <div className="pointer-events-auto flex w-[94%] max-w-2xl flex-col gap-3 rounded-2xl border border-base-content/15 bg-base-200/90 p-4 sm:p-5 shadow-2xl backdrop-blur-xl transition-all">
+          
+          {/* HEADER ROW */}
+          <div className="flex items-center justify-between border-b border-base-content/10 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-primary/20 text-primary">
+                <Sparkles className="h-4 w-4 animate-pulse" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold tracking-wider text-base-content uppercase">
+                    {batchMode ? "Batch Processing" : "Neural Super-Resolution"}
+                  </span>
+                  {doubleUpscaylCounter > 0 && (
+                    <span className="badge badge-primary badge-xs font-semibold">
+                      Pass {doubleUpscaylCounter}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] font-medium text-base-content/70">
+                  {batchMode ? `Folder Queue` : modelDisplay}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* LIVE TIMER PILL */}
+              <div className="flex items-center gap-1.5 rounded-full border border-base-content/10 bg-base-300/80 px-2.5 py-1 text-xs font-semibold tabular-nums text-base-content">
+                <Timer className="h-3.5 w-3.5 text-primary" />
+                <span>{formattedTime}</span>
+              </div>
+
+              {/* STOP BUTTON */}
+              <button
+                type="button"
+                onClick={stopHandler}
+                className="btn btn-ghost btn-xs h-7 rounded-lg border border-error/30 text-error hover:border-error hover:bg-error/20"
+                title={t("APP.PROGRESS_BAR.STOP_BUTTON_TITLE")}
+              >
+                <X className="mr-1 h-3.5 w-3.5" />
+                Stop
+              </button>
+            </div>
+          </div>
+
+          {/* MAIN PERCENTAGE & STAGE DESCRIPTION */}
+          <div className="flex items-end justify-between pt-1">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-base-content">
+                {batchMode
+                  ? `${t("APP.PROGRESS_BAR.BATCH_UPSCAYL_IN_PROGRESS_TITLE")} ${batchProgress} files`
+                  : progressInfo.phaseName || "Upscaling in Progress"}
+              </span>
+              <span className="text-xs text-base-content/70">
+                {batchMode
+                  ? "Processing batch folder images with multi-GPU/PyTorch acceleration..."
+                  : progressInfo.phaseDesc || "Computing deep transformer & diffusion super-resolution..."}
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl sm:text-3xl font-black tabular-nums tracking-tight text-primary">
+                {currentPct.toFixed(1)}
+              </span>
+              <span className="text-sm font-semibold text-primary/80">%</span>
+            </div>
+          </div>
+
+          {/* SLEEK PROGRESS BAR WITH SHIMMER */}
+          <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-base-300">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-primary via-accent to-secondary transition-all duration-300 ease-out"
+              style={{ width: `${Math.max(5, currentPct)}%` }}
+            />
+            {currentPct < 99 && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse pointer-events-none" />
+            )}
+          </div>
+
+          {/* 4-PHASE STEP PIPELINE */}
+          {!batchMode && (
+            <div className="grid grid-cols-4 gap-1.5 pt-1">
+              {PHASES.map((p) => {
+                const isDone = activePhase > p.index;
+                const isCurrent = activePhase === p.index;
+                return (
+                  <div
+                    key={p.index}
+                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] transition-all ${
+                      isDone
+                        ? "border-primary/30 bg-primary/10 text-primary font-semibold"
+                        : isCurrent
+                        ? "border-accent bg-accent/15 text-base-content font-bold shadow-sm"
+                        : "border-base-content/10 bg-base-300/40 text-base-content/40"
+                    }`}
+                  >
+                    {isDone ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />
+                    ) : isCurrent ? (
+                      <div className="h-2 w-2 rounded-full bg-accent animate-ping shrink-0" />
+                    ) : (
+                      <span className="text-[10px] opacity-60 shrink-0 font-mono">
+                        {p.index}
+                      </span>
+                    )}
+                    <span className="truncate">{p.label}</span>
+                  </div>
+                );
+              })}
+            </div>
           )}
 
-          <p className="animate-pulse rounded-full px-2 pb-3 text-xs font-medium text-neutral-content/50">
-            {t("APP.PROGRESS_BAR.IN_PROGRESS_TITLE")}
-          </p>
+          {/* LIVE TERMINAL DETAIL LOG PILL */}
+          {progressInfo.detailMessage && (
+            <div className="flex items-center gap-2 rounded-lg border border-base-content/10 bg-base-300/50 px-2.5 py-1 text-[11px] font-mono text-base-content/75">
+              <Activity className="h-3 w-3 text-accent shrink-0 animate-pulse" />
+              <span className="truncate">{progressInfo.detailMessage}</span>
+            </div>
+          )}
         </div>
-
-        <button onClick={stopHandler} className="btn btn-outline">
-          {t("APP.PROGRESS_BAR.STOP_BUTTON_TITLE")}
-        </button>
       </div>
     </div>
   );

@@ -81,6 +81,7 @@ def run_spandrel_upscale(
     import spandrel
 
     print(f"Loading model via Spandrel: {model_path}", file=sys.stderr, flush=True)
+    print(f"Loading neural model: {os.path.basename(model_path)}", file=sys.stdout, flush=True)
     loader = spandrel.ModelLoader(device=device)
     model_desc = loader.load_from_file(model_path)
     
@@ -166,6 +167,7 @@ def run_spandrel_upscale(
 
                 current_tile += 1
                 pct = 10.0 + (current_tile / total_tiles) * 70.0
+                print(f"Tiled inference: processing tile {current_tile}/{total_tiles}", file=sys.stdout, flush=True)
                 log_progress(pct)
 
         out_canvas = out_canvas / weight_canvas.clamp(min=1e-5)
@@ -310,6 +312,7 @@ def run_seedvr2_upscale(
 
     for line in proc.stdout:
         print(line, end="", file=sys.stderr, flush=True)
+        print(line, end="", file=sys.stdout, flush=True)
         if "Phase 1:" in line:
             log_progress(25.0)
         elif "Phase 2:" in line:

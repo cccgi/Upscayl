@@ -304,3 +304,31 @@
     -webkit-transform: perspective(120px) rotateX(-360deg) rotateY(-359.9deg);
   }
 }
+
+
+@keyframes aiScanSweep {
+  0% {
+    top: 2%;
+    opacity: 0.85;
+  }
+  50% {
+    top: 96%;
+    opacity: 1;
+  }
+  100% {
+    top: 2%;
+    opacity: 0.85;
+  }
+}
+
+.ai-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #38bdf8 20%, #818cf8 50%, #ec4899 80%, transparent 100%);
+  box-shadow: 0 0 16px 3px rgba(129, 140, 248, 0.7), 0 0 32px 6px rgba(56, 189, 248, 0.45);
+  animation: aiScanSweep 3.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 30;
+}
