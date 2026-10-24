@@ -24,10 +24,9 @@ type OnboardingStep = {
   type: "info" | "settings";
   configurationOptions?: {
     key: string;
-    type: "switch" | "input" | "video" | "component";
+    type: "switch" | "input" | "component";
     label?: string;
     description?: string;
-    videoSrc?: string;
     component?: any;
   }[];
 };
@@ -82,14 +81,34 @@ export function OnboardingDialog() {
       },
       {
         type: "info",
-        title: t("ONBOARDING_DIALOG.STEP_3.TITLE"),
-        description: t("ONBOARDING_DIALOG.STEP_3.DESCRIPTION"),
+        title: "Modern AI Upscaling 🚀",
+        description: "Upscayl has been revived with state-of-the-art AI engines and auto-detection.",
         configurationOptions: [
           {
-            key: "video",
-            type: "video",
-            videoSrc:
-              "https://www.youtube-nocookie.com/embed/3M77flVZlVY?autoplay=1",
+            key: "features",
+            type: "component",
+            component: (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full text-left text-primary-content">
+                <div className="rounded-lg bg-black/25 p-4 border border-white/10">
+                  <p className="font-bold text-sm mb-1">✨ SeedVR2 Diffusion</p>
+                  <p className="text-xs opacity-85 leading-relaxed">
+                    ByteDance SOTA DiT that reconstructs realistic skin pores, hair, and organic textures.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-black/25 p-4 border border-white/10">
+                  <p className="font-bold text-sm mb-1">⚡ DAT-2 Transformers</p>
+                  <p className="text-xs opacity-85 leading-relaxed">
+                    Dual Aggregation Transformers delivering peak structural fidelity and razor-sharp clarity.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-black/25 p-4 border border-white/10">
+                  <p className="font-bold text-sm mb-1">🪄 Smart Auto-Detection</p>
+                  <p className="text-xs opacity-85 leading-relaxed">
+                    Scans uploaded images in real time and automatically applies the ideal upscaler.
+                  </p>
+                </div>
+              </div>
+            ),
           },
         ],
       },
@@ -99,7 +118,7 @@ export function OnboardingDialog() {
         type: "info",
       },
     ],
-    [locale],
+    [locale, t],
   );
 
   const currentStepData = onboardingSteps[currentStep];
@@ -154,8 +173,6 @@ export function OnboardingDialog() {
             className={cn(
               "flex h-full w-full flex-col rounded-sm bg-primary p-8",
               "h-auto w-auto gap-8",
-              currentStepData.configurationOptions[0].type === "video" &&
-                "h-full w-full gap-0 p-0",
             )}
           >
             {currentStepData.configurationOptions.map((option) => (
@@ -206,17 +223,6 @@ export function OnboardingDialog() {
                     onChange={(e) =>
                       handleSettingChange(option.key, e.target.value)
                     }
-                  />
-                )}
-                {option.type === "video" && (
-                  <iframe
-                    className="h-full w-full rounded-sm"
-                    src={option.videoSrc}
-                    title="YouTube video player"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
                   />
                 )}
                 {option.type === "component" && option.component}

@@ -150,7 +150,8 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
       upscayl.kill();
     }
   };
-  upscayl.process.stderr.on("data", onData);
+  upscayl.process.stderr?.on("data", onData);
+  upscayl.process.stdout?.on("data", onData);
   upscayl.process.on("error", onError);
   upscayl.process.on("close", onClose);
 };

@@ -9,14 +9,15 @@ import logit from "../utils/logit";
 
 const getModelsList = async (event, payload) => {
   const mainWindow = getMainWindow();
-
   if (!mainWindow) return;
+
   if (payload) {
     setSavedCustomModelsPath(payload);
-
     logit("📁 Custom Models Folder Path: ", savedCustomModelsPath);
-    const models = await getModels(payload);
+  }
 
+  const models = await getModels(payload || savedCustomModelsPath);
+  if (models) {
     mainWindow.webContents.send(
       ELECTRON_COMMANDS.CUSTOM_MODEL_FILES_LIST,
       models,

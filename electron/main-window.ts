@@ -6,6 +6,7 @@ import { fetchLocalStorage } from "./utils/config-variables";
 import electronIsDev from "electron-is-dev";
 import { format } from "url";
 import { autoUpdater } from "electron-updater";
+import getModels from "./utils/get-models";
 
 let mainWindow: BrowserWindow | undefined;
 
@@ -48,6 +49,17 @@ const createMainWindow = () => {
   mainWindow.once("ready-to-show", () => {
     if (!mainWindow) return;
     mainWindow.show();
+  });
+
+  mainWindow.webContents.on("did-finish-load", async () => {
+    if (!mainWindow) return;
+    const models = await getModels(undefined);
+    if (models && mainWindow) {
+      mainWindow.webContents.send(
+        ELECTRON_COMMANDS.CUSTOM_MODEL_FILES_LIST,
+        models,
+      );
+    }
   });
 
   fetchLocalStorage();

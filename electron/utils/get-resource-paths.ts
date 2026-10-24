@@ -2,6 +2,7 @@ import { join, dirname, resolve } from "path";
 import { getPlatform } from "./get-device-specs";
 import isDev from "electron-is-dev";
 import { app } from "electron";
+import fs from "fs";
 
 /**
  * appRootDir is the resources directory inside the unpacked electron app temp directory.
@@ -21,4 +22,22 @@ const modelsPath = isDev
   ? resolve(join(appRootDir, "resources", "models"))
   : resolve(join(dirname(appRootDir), "models"));
 
-export { execPath, modelsPath };
+const engineScriptPath = isDev
+  ? resolve(join(appRootDir, "resources", "engine", "upscayl_engine.py"))
+  : resolve(join(dirname(appRootDir), "engine", "upscayl_engine.py"));
+
+const candidatePythons = [
+  process.env.UPSCAYL_PYTHON_PATH,
+  "C:\\Users\\Admin\\.conda\\envs\\krea2\\python.exe",
+  "python",
+].filter(Boolean) as string[];
+
+let pythonPath = "python";
+for (const p of candidatePythons) {
+  if (p === "python" || fs.existsSync(p)) {
+    pythonPath = p;
+    break;
+  }
+}
+
+export { execPath, modelsPath, engineScriptPath, pythonPath };

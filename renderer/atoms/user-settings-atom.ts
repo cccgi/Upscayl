@@ -10,8 +10,14 @@ export const customModelsPathAtom = atomWithStorage<string | null>(
 
 export const selectedModelIdAtom = atomWithStorage<ModelId | string>(
   "selectedModelId",
-  "upscayl-standard-4x",
+  "seedvr2_ema_3b_fp16",
 );
+
+export const autoSelectModelAtom = atomWithStorage<boolean>(
+  "autoSelectModel",
+  true,
+);
+
 export const doubleUpscaylAtom = atomWithStorage("doubleUpscayl", false);
 export const gpuIdAtom = atomWithStorage("gpuId", "");
 export const saveImageAsAtom = atomWithStorage<ImageFormat>(

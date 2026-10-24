@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from "jotai";
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Tooltip } from "react-tooltip";
 import { themeChange } from "theme-change";
 import useLogger from "../../hooks/use-logger";
@@ -10,6 +10,8 @@ import {
   scaleAtom,
   customWidthAtom,
   useCustomWidthAtom,
+  selectedModelIdAtom,
+  autoSelectModelAtom,
 } from "../../../atoms/user-settings-atom";
 import { FEATURE_FLAGS } from "@common/feature-flags";
 import { ELECTRON_COMMANDS } from "@common/electron-commands";
@@ -18,6 +20,8 @@ import { translationAtom } from "@/atoms/translations-atom";
 import { SelectImageScale } from "../settings-tab/select-image-scale";
 import SelectModelDialog from "./select-model-dialog";
 import { ImageFormat } from "@/lib/valid-formats";
+import { analyzeImage, AnalysisResult } from "@/lib/image-analyzer";
+import { ArrowRight, Check, Sparkles, Wand2 } from "lucide-react";
 
 interface IProps {
   selectImageHandler: () => Promise<void>;
@@ -50,9 +54,15 @@ function UpscaylSteps({
   const [scale, setScale] = useAtom(scaleAtom);
   const [outputPath, setOutputPath] = useAtom(savedOutputPathAtom);
   const [progress, setProgress] = useAtom(progressAtom);
+  const [selectedModelId, setSelectedModelId] = useAtom(selectedModelIdAtom);
+  const [autoSelectModel, setAutoSelectModel] = useAtom(autoSelectModelAtom);
+
   const rememberOutputFolder = useAtomValue(rememberOutputFolderAtom);
   const customWidth = useAtomValue(customWidthAtom);
   const useCustomWidth = useAtomValue(useCustomWidthAtom);
+
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const logit = useLogger();
   const { toast } = useToast();
@@ -71,6 +81,32 @@ function UpscaylSteps({
   useEffect(() => {
     themeChange(false);
   }, []);
+
+  // SMART IMAGE SCANNING & ALGORITHM RECOMMENDATION
+  useEffect(() => {
+    if (!imagePath || batchMode) {
+      setAnalysis(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsAnalyzing(true);
+
+    analyzeImage(imagePath).then((result) => {
+      if (!isMounted) return;
+      setAnalysis(result);
+      setIsAnalyzing(false);
+
+      if (autoSelectModel && result?.suggestedModel) {
+        logit("✨ Smart Auto-Selected Model:", result.suggestedModel);
+        setSelectedModelId(result.suggestedModel);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [imagePath, batchMode, autoSelectModel, setSelectedModelId, logit]);
 
   const upscaylResolution = useMemo(() => {
     const newDimensions = {
@@ -106,11 +142,11 @@ function UpscaylSteps({
     }
 
     return newDimensions;
-  }, [dimensions.width, dimensions.height, doubleUpscayl, scale]);
+  }, [dimensions.width, dimensions.height, doubleUpscayl, scale, customWidth, useCustomWidth]);
 
   return (
     <div
-      className={`animate-step-in animate flex h-screen flex-col gap-7 overflow-y-auto overflow-x-hidden p-5`}
+      className={`animate-step-in animate flex h-screen flex-col gap-6 overflow-y-auto overflow-x-hidden p-5`}
     >
       {/* BATCH OPTION */}
       <div className="flex flex-row items-center gap-2">
@@ -151,13 +187,73 @@ function UpscaylSteps({
       </div>
 
       {/* STEP 2 */}
-      <div className="animate-step-in group flex flex-col gap-4">
+      <div className="animate-step-in group flex flex-col gap-3">
         <div>
-          <p className="step-heading">{t("APP.MODEL_SELECTION.TITLE")}</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="step-heading mb-0">{t("APP.MODEL_SELECTION.TITLE")}</p>
+            {analysis && !batchMode && (
+              <span className="badge badge-primary badge-sm font-semibold gap-1 text-[11px]">
+                <Sparkles className="h-3 w-3" />
+                {analysis.tag}
+              </span>
+            )}
+          </div>
           <p className="mb-2 text-sm">{t("APP.MODEL_SELECTION.DESCRIPTION")}</p>
 
           <SelectModelDialog />
         </div>
+
+        {/* SMART IMAGE DETECTION & ALGORITHM RECOMMENDATION */}
+        {analysis && !batchMode && (
+          <div className="rounded-lg border border-primary/25 bg-base-200/60 p-3 flex flex-col gap-2 transition-all">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold flex items-center gap-1.5 text-primary">
+                <Wand2 className="h-3.5 w-3.5" />
+                Detected: {analysis.label}
+              </span>
+              <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-base-content/70 hover:text-base-content select-none">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-xs checkbox-primary"
+                  checked={autoSelectModel}
+                  onChange={(e) => setAutoSelectModel(e.target.checked)}
+                />
+                Auto-apply
+              </label>
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-base-content/80">
+              {analysis.reason}
+            </p>
+
+            <button
+              type="button"
+              className={`btn btn-xs w-full justify-between font-medium transition-all ${
+                selectedModelId === analysis.suggestedModel
+                  ? "btn-success text-success-content"
+                  : "btn-outline btn-primary"
+              }`}
+              onClick={() => setSelectedModelId(analysis.suggestedModel)}
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                {selectedModelId === analysis.suggestedModel ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Active: {analysis.modelDisplayName}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">Use Recommended: {analysis.modelDisplayName}</span>
+                  </>
+                )}
+              </span>
+              {selectedModelId !== analysis.suggestedModel && (
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 ml-1" />
+              )}
+            </button>
+          </div>
+        )}
 
         {!batchMode && (
           <div className="flex items-center gap-1">

@@ -176,7 +176,8 @@ const imageUpscayl = async (event, payload: ImageUpscaylPayload) => {
       }
     };
 
-    upscayl.process.stderr.on("data", onData);
+    upscayl.process.stderr?.on("data", onData);
+    upscayl.process.stdout?.on("data", onData);
     upscayl.process.on("error", onError);
     upscayl.process.on("close", onClose);
   }
