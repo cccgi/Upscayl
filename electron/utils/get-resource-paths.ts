@@ -26,6 +26,10 @@ const engineScriptPath = isDev
   ? resolve(join(appRootDir, "resources", "engine", "upscayl_engine.py"))
   : resolve(join(dirname(appRootDir), "engine", "upscayl_engine.py"));
 
+const classifierScriptPath = isDev
+  ? resolve(join(appRootDir, "resources", "engine", "classifier_service.py"))
+  : resolve(join(dirname(appRootDir), "engine", "classifier_service.py"));
+
 const candidatePythons = [
   process.env.UPSCAYL_PYTHON_PATH,
   "C:\\Users\\Admin\\.conda\\envs\\krea2\\python.exe",
@@ -40,4 +44,4 @@ for (const p of candidatePythons) {
   }
 }
 
-export { execPath, modelsPath, engineScriptPath, pythonPath };
+export { execPath, modelsPath, engineScriptPath, classifierScriptPath, pythonPath };
