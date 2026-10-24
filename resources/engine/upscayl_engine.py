@@ -1,10 +1,10 @@
 """
-Upscayl Next-Gen Engine: Unified PyTorch / CUDA, Spandrel, and SeedVR2 Backend.
+Upscayl Modern Python Engine: Unified PyTorch / CUDA, Spandrel, and SeedVR2 Backend.
 Supports:
   - ByteDance SeedVR2 (3B, 7B, 7B-sharp, FP16, FP8, GGUF) via diffusion DiT + VAE
-  - Universal SOTA Transformers (DAT, DAT-2, HAT, OmniSR, SwinIR) via Spandrel
+  - Universal SOTA Transformers (DAT, DAT-2, FaceUpDAT, HAT, OmniSR, SwinIR) via Spandrel
   - SOTA CNNs (Real-ESRGAN, UltraSharp, Remacri, NMKD, AnimeSharp, SPAN, Compact) via Spandrel
-  - Tiled inference for large images
+  - Smooth Hann-cosine feathered tiled inference for large images
   - Compatible CLI arguments and progress protocol for Upscayl Electron frontend
 """
 
@@ -15,6 +15,7 @@ import glob
 from pathlib import Path
 import math
 import time
+from typing import Optional
 
 # Ensure UTF-8 output on Windows
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -27,7 +28,7 @@ def log_progress(pct: float):
     print(msg, file=sys.stderr, flush=True)
     print(msg, file=sys.stdout, flush=True)
 
-def find_model_file(model_name: str, search_dirs: list[str]) -> str | None:
+def find_model_file(model_name: str, search_dirs: list[str]) -> Optional[str]:
     """Finds a model file by name or path across known model directories."""
     # Check if exact path provided
     if os.path.isfile(model_name):
@@ -68,10 +69,10 @@ def run_spandrel_upscale(
     input_path: str,
     output_path: str,
     model_path: str,
-    target_scale: float | None = None,
-    custom_width: int | None = None,
+    target_scale: Optional[float] = None,
+    custom_width: Optional[int] = None,
     tile_size: int = 1024,
-    tile_overlap: int = 32,
+    tile_overlap: int = 48,
     device: str = "cuda"
 ):
     import torch
@@ -104,7 +105,7 @@ def run_spandrel_upscale(
 
     log_progress(10.0)
 
-    # Tiled inference for high resolution or large scale
+    # Tiled inference for large images
     needs_tiling = (tile_size > 0) and (w > tile_size or h > tile_size)
 
     if not needs_tiling:
@@ -115,23 +116,24 @@ def run_spandrel_upscale(
         out_img = TF.to_pil_image(out_tensor)
         log_progress(80.0)
     else:
-        # Perform tiled processing with linear feathering / blending
+        # Perform tiled processing with Hann-cosine feathered blending to eliminate tile borders
         print(f"Performing tiled inference (tile_size={tile_size}, overlap={tile_overlap})", file=sys.stderr, flush=True)
         out_w = w * native_scale
         out_h = h * native_scale
         out_canvas = torch.zeros((3, out_h, out_w), dtype=torch.float32)
         weight_canvas = torch.zeros((1, out_h, out_w), dtype=torch.float32)
 
-        x_steps = math.ceil(w / (tile_size - tile_overlap))
-        y_steps = math.ceil(h / (tile_size - tile_overlap))
+        stride = tile_size - tile_overlap
+        x_steps = math.ceil((w - tile_size) / stride) + 1 if w > tile_size else 1
+        y_steps = math.ceil((h - tile_size) / stride) + 1 if h > tile_size else 1
         total_tiles = x_steps * y_steps
         current_tile = 0
 
         for yi in range(y_steps):
-            y1 = min(yi * (tile_size - tile_overlap), max(0, h - tile_size))
+            y1 = min(yi * stride, max(0, h - tile_size))
             y2 = min(y1 + tile_size, h)
             for xi in range(x_steps):
-                x1 = min(xi * (tile_size - tile_overlap), max(0, w - tile_size))
+                x1 = min(xi * stride, max(0, w - tile_size))
                 x2 = min(x1 + tile_size, w)
 
                 tile = img.crop((x1, y1, x2, y2))
@@ -143,12 +145,13 @@ def run_spandrel_upscale(
                 dx1, dy1 = x1 * native_scale, y1 * native_scale
                 dx2, dy2 = x2 * native_scale, y2 * native_scale
 
-                # Linear feathering mask
+                # Cosine-feathered blending mask
                 th, tw = out_tile.shape[1], out_tile.shape[2]
                 mask = torch.ones((1, th, tw), dtype=torch.float32)
                 feather = tile_overlap * native_scale
                 if feather > 0:
-                    ramp = torch.linspace(0, 1, feather)
+                    # Hann window ramp: 0.5 * (1 - cos(pi * t))
+                    ramp = 0.5 - 0.5 * torch.cos(torch.linspace(0, math.pi, feather))
                     if xi > 0:
                         mask[:, :, :feather] *= ramp
                     if xi < x_steps - 1:
@@ -171,11 +174,11 @@ def run_spandrel_upscale(
     # Handle resizing if target scale or custom width differ
     if custom_width and custom_width > 0:
         if out_img.width != custom_width:
-            print("Resizing...", flush=True)
+            print("Resizing to custom width...", flush=True)
             new_h = int(round(out_img.height * (custom_width / out_img.width)))
             out_img = out_img.resize((custom_width, new_h), Image.Resampling.LANCZOS)
     elif target_scale and abs(target_scale - native_scale) > 0.01:
-        print("Resizing...", flush=True)
+        print(f"Resizing to target scale {target_scale}x...", flush=True)
         target_w = int(round(w * target_scale))
         target_h = int(round(h * target_scale))
         out_img = out_img.resize((target_w, target_h), Image.Resampling.LANCZOS)
@@ -190,36 +193,47 @@ def run_seedvr2_upscale(
     input_path: str,
     output_path: str,
     dit_model: str,
-    resolution: int = 1080,
+    resolution: Optional[int] = None,
+    target_scale: float = 4.0,
+    custom_width: Optional[int] = None,
     color_correction: str = "lab",
-    vae_tiled: bool = True
+    vae_tiled: Optional[bool] = None
 ):
     import subprocess
+    from PIL import Image
+
     seedvr_cli = r"D:\_krea2\custom_nodes\seedvr2_videoupscaler\inference_cli.py"
     python_exe = sys.executable
 
-    # Detect model directories
-    model_dirs = [
-        r"C:\models\SEEDVR2",
-        r"D:\_krea2\models\SEEDVR2",
-        r"E:\models\SEEDVR2",
-        r"D:\models\SEEDVR2"
-    ]
-    model_dir = None
-    for md in model_dirs:
-        if os.path.exists(md):
-            model_dir = md
-            break
+    # Read input dimensions to prevent catastrophic downscaling
+    with Image.open(input_path) as in_im:
+        in_w, in_h = in_im.size
+
+    in_short = min(in_w, in_h)
+
+    # Calculate optimal target short-edge resolution:
+    # 1. Never downscale the user's input below its native short edge (unless > 2160)
+    # 2. Clamped up to 2160p (4K short edge) for DiT processing
+    if resolution is None or resolution <= 0:
+        desired_res = int(round(in_short * target_scale))
+        if in_short >= 2160:
+            target_res = 2160
+        else:
+            target_res = min(2160, max(in_short, desired_res))
+    else:
+        target_res = resolution
+
+    print(f"[SeedVR2 Engine] Input: {in_w}x{in_h} (short: {in_short}px) -> SeedVR2 DiT resolution: {target_res}px", file=sys.stderr, flush=True)
 
     # Extract model basename if path given
     dit_name = os.path.basename(dit_model)
     if not dit_name.endswith(".safetensors") and not dit_name.endswith(".gguf"):
         # Match against known names
         candidates = [
-            "seedvr2_ema_3b_fp16.safetensors",
-            "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
             "seedvr2_ema_7b_fp16.safetensors",
+            "seedvr2_ema_3b_fp16.safetensors",
             "seedvr2_ema_7b_sharp_fp16.safetensors",
+            "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
         ]
         matched = False
         for c in candidates:
@@ -228,7 +242,31 @@ def run_seedvr2_upscale(
                 matched = True
                 break
         if not matched:
-            dit_name = "seedvr2_ema_3b_fp16.safetensors"
+            dit_name = "seedvr2_ema_7b_fp16.safetensors"
+
+    # Search for directory that actually holds this model file
+    model_dirs = [
+        r"C:\models\SEEDVR2",
+        r"D:\_krea2\models\SEEDVR2",
+        r"E:\models\SEEDVR2",
+        r"D:\models\SEEDVR2"
+    ]
+    model_dir = None
+    for md in model_dirs:
+        if os.path.exists(os.path.join(md, dit_name)):
+            model_dir = md
+            break
+    if not model_dir:
+        for md in model_dirs:
+            if os.path.exists(md):
+                model_dir = md
+                break
+
+    # Determine VAE tiling:
+    # VAE latent tiling is the primary cause of 512px grid seam lines.
+    # On GPUs with 16GB+ VRAM (RTX 3090 24GB), single images up to 2160p fit comfortably without tiling.
+    if vae_tiled is None:
+        vae_tiled = (target_res > 2160)
 
     cmd = [
         python_exe,
@@ -236,14 +274,22 @@ def run_seedvr2_upscale(
         input_path,
         "--output", output_path,
         "--dit_model", dit_name,
-        "--resolution", str(resolution),
+        "--resolution", str(target_res),
+        "--batch_size", "1",  # Crucial: 1-frame batch eliminates 3D temporal convolutions and duplicates
         "--color_correction", color_correction,
         "--output_format", "png"
     ]
     if model_dir:
         cmd.extend(["--model_dir", model_dir])
     if vae_tiled:
-        cmd.extend(["--vae_encode_tiled", "--vae_decode_tiled"])
+        cmd.extend([
+            "--vae_encode_tiled",
+            "--vae_decode_tiled",
+            "--vae_encode_tile_size", "2048",
+            "--vae_encode_tile_overlap", "256",
+            "--vae_decode_tile_size", "2048",
+            "--vae_decode_tile_overlap", "256",
+        ])
 
     print(f"Launching SeedVR2: {' '.join(cmd)}", file=sys.stderr, flush=True)
     log_progress(10.0)
@@ -278,16 +324,36 @@ def run_seedvr2_upscale(
         raise RuntimeError(f"SeedVR2 exited with code {proc.returncode}")
 
     # SeedVR2 CLI saves to auto-generated path or output directory; ensure output_path has the file
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    input_stem = Path(input_path).stem
     if not os.path.exists(output_path):
-        # Look for the generated output file in the output folder
-        out_dir = os.path.dirname(os.path.abspath(output_path))
-        input_stem = Path(input_path).stem
         candidates = glob.glob(os.path.join(out_dir, f"{input_stem}*"))
         if candidates:
             newest = max(candidates, key=os.path.getmtime)
             if newest != output_path:
                 import shutil
                 shutil.move(newest, output_path)
+
+    # Post-process dimensions if needed:
+    # Ensure final output matches requested custom_width or target_scale
+    if os.path.exists(output_path):
+        with Image.open(output_path) as out_im:
+            curr_w, curr_h = out_im.size
+            need_resize = False
+            final_w, final_h = curr_w, curr_h
+            if custom_width and custom_width > 0:
+                final_w = custom_width
+                final_h = int(round(in_h * (custom_width / in_w)))
+                need_resize = (curr_w != final_w or curr_h != final_h)
+            elif target_scale and target_scale > 1.0:
+                final_w = int(round(in_w * target_scale))
+                final_h = int(round(in_h * target_scale))
+                need_resize = (curr_w != final_w or curr_h != final_h)
+
+            if need_resize:
+                print(f"Post-resizing SeedVR2 output ({curr_w}x{curr_h}) to target ({final_w}x{final_h})...", file=sys.stderr, flush=True)
+                out_im = out_im.resize((final_w, final_h), Image.Resampling.LANCZOS)
+                out_im.save(output_path)
 
     log_progress(100.0)
 
@@ -304,7 +370,7 @@ def main():
     parser.add_argument("-t", "--tile_size", default="1024", help="Tile size (0 to disable)")
     parser.add_argument("-g", "--gpu_id", default="0", help="GPU device ID")
     parser.add_argument("-x", "--tta", action="store_true", help="TTA mode")
-    parser.add_argument("--resolution", default="1080", help="Target resolution for SeedVR2")
+    parser.add_argument("--resolution", default=None, help="Target resolution for SeedVR2 (default: auto)")
     parser.add_argument("--color_correction", default="lab", help="Color correction for SeedVR2")
 
     args = parser.parse_args()
@@ -351,12 +417,14 @@ def main():
     for idx, (in_file, out_file) in enumerate(inputs):
         print(f"[{idx+1}/{total_images}] Processing {in_file} -> {out_file}", file=sys.stderr, flush=True)
         if is_seedvr:
-            res = int(args.resolution) if args.resolution and args.resolution.isdigit() else 1080
+            res = int(args.resolution) if args.resolution and args.resolution.isdigit() else None
             run_seedvr2_upscale(
                 input_path=in_file,
                 output_path=out_file,
                 dit_model=args.model_name,
                 resolution=res,
+                target_scale=target_scale,
+                custom_width=custom_w,
                 color_correction=args.color_correction
             )
         else:

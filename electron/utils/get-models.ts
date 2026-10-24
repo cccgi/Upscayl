@@ -47,12 +47,12 @@ const scanDirectoryForModels = (dirPath: string, models: string[]) => {
 const getModelPriority = (name: string): number => {
   const l = name.toLowerCase();
   if (l === "seedvr2_ema_3b_fp16") return 100;
-  if (l.includes("seedvr2_ema_7b_sharp")) return 95;
-  if (l.includes("seedvr2_ema_7b")) return 90;
-  if (l.includes("seedvr2_ema_3b_fp8")) return 85;
-  if (l.includes("seed")) return 80;
-  if (l.includes("realwebphoto") || l.includes("dat2")) return 70;
-  if (l.includes("faceupdat")) return 65;
+  if (l.includes("seedvr2_ema_7b_fp16") || (l.includes("seedvr2_ema_7b") && !l.includes("sharp"))) return 95;
+  if (l.includes("faceupdat")) return 90;
+  if (l.includes("realwebphoto") || l.includes("dat2")) return 85;
+  if (l.includes("seedvr2_ema_7b_sharp")) return 80;
+  if (l.includes("seedvr2_ema_3b_fp8")) return 75;
+  if (l.includes("seed")) return 70;
   if (l.includes("dat")) return 60;
   if (l.includes("ultrasharp")) return 50;
   if (l.includes("remacri")) return 45;

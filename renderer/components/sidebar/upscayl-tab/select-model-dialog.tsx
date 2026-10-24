@@ -31,17 +31,17 @@ export const getModelMetadata = (id: string): ModelMeta => {
     if (l.includes("7b_sharp") || l.includes("7b-sharp")) {
       return {
         name: "SeedVR2 7B Sharp (FP16)",
-        badge: "SOTA Generative DiT",
+        badge: "Experimental Sharp DiT",
         badgeClass: "badge-primary text-primary-content",
-        description: "ByteDance 7B DiT with sharp detailing. Peak photorealism for portraits, eyes & fine textures.",
+        description: "Community sharpening fine-tune with boosted contrast (recommended for stylised art; use FaceUpDAT or 7B Base for skin portraits).",
       };
     }
     if (l.includes("7b")) {
       return {
-        name: "SeedVR2 7B (FP16)",
-        badge: "SOTA Generative DiT",
+        name: "SeedVR2 7B Base (FP16)",
+        badge: "Official SOTA Generative DiT",
         badgeClass: "badge-primary text-primary-content",
-        description: "ByteDance 7B DiT. Unsurpassed generative hallucination and compression artifact repair.",
+        description: "Official ByteDance 7B DiT. Smooth, photorealistic generative synthesis with continuous natural skin tones.",
       };
     }
     if (l.includes("fp8")) {
@@ -57,6 +57,14 @@ export const getModelMetadata = (id: string): ModelMeta => {
       badge: "SOTA Generative DiT",
       badgeClass: "badge-primary text-primary-content",
       description: "ByteDance SOTA DiT diffusion model. Reconstructs hair, skin pores, and natural textures.",
+    };
+  }
+  if (l.includes("faceupdat") || l.includes("face-up-dat")) {
+    return {
+      name: "4xFaceUpDAT",
+      badge: "SOTA Face Restoration",
+      badgeClass: "badge-secondary text-secondary-content",
+      description: "Dual Aggregation Face Transformer. Pristine facial micro-pores, eyelashes, and natural skin tone with zero diffusion noise.",
     };
   }
   if (l.includes("realwebphoto") || l.includes("dat2") || l.includes("dat-2") || l.includes("lexica")) {

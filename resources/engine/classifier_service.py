@@ -2,7 +2,8 @@
 Upscayl Intelligent Vision Classifier
 Uses Ultralytics YOLOv8 for 100% precision Human Face & Portrait detection
 Combined with OpenAI CLIP (ViT-B/32) for zero-shot semantic recognition:
-  - Human Portraits / Headshots (SeedVR2 7B Sharp / 4xFaceUpDAT)
+  - High-Res Human Portraits (4xFaceUpDAT - pristine pore preservation, zero diffusion noise)
+  - Standard/Low-Res Portraits (SeedVR2 7B - generative micro-feature synthesis)
   - Software UI, Screenshots & Typography (4x-UltraSharp)
   - Technical Schematics, Diagrams & Charts (4x-UltraSharp)
   - Fashion Apparel, Products, Merchandise & Furniture (4xRealWebPhoto_v4_dat2)
@@ -104,6 +105,9 @@ def classify_image(image_path: str) -> dict:
 
     # 2. Semantic Analysis with CLIP
     raw_img = Image.open(image_path).convert("RGB")
+    width, height = raw_img.size
+    is_high_res = (width >= 1920 or height >= 1920)
+
     img_tensor = _clip_preprocess(raw_img).unsqueeze(0).to(_clip_device)
     
     with torch.no_grad():
@@ -117,31 +121,32 @@ def classify_image(image_path: str) -> dict:
         scores[cat_key] = float(probs[idx].item())
 
     # Decision Matrix:
-    # If genuine human faces are detected, prioritize Portrait unless screenshot/diagram is overwhelming
-    if num_faces > 0:
-        return {
-            "category": "portrait",
-            "tag": "Human Portrait",
-            "label": "Human Portrait & Studio Photography",
-            "reason": f"Detected {num_faces} human face(s) with {face_conf*100:.0f}% confidence. SeedVR2 7B Sharp restores ultra-fine skin, hair, and facial micro-features.",
-            "suggestedModel": "seedvr2_ema_7b_sharp_fp16",
-            "modelDisplayName": "SeedVR2 7B Sharp (Diffusion SOTA)",
-            "confidence": round(max(face_conf, scores["portrait"]), 2)
-        }
+    # If genuine human faces are detected or portrait probability is high:
+    if num_faces > 0 or scores["portrait"] > 0.40:
+        conf = round(max(face_conf, scores["portrait"]), 2)
+        if is_high_res:
+            return {
+                "category": "portrait",
+                "tag": "High-Res Portrait",
+                "label": "High-Resolution Human Portrait",
+                "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). FaceUpDAT transformer provides pristine facial micro-pores and skin smoothing with zero diffusion grid or noise.",
+                "suggestedModel": "4xFaceUpDAT",
+                "modelDisplayName": "FaceUpDAT (High-Res Face & Skin Transformer)",
+                "confidence": conf
+            }
+        else:
+            return {
+                "category": "portrait",
+                "tag": "Human Portrait",
+                "label": "Human Portrait & People",
+                "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). SeedVR2 7B generative diffusion synthesizes missing facial micro-features, skin textures, and hair detail.",
+                "suggestedModel": "seedvr2_ema_7b_fp16",
+                "modelDisplayName": "SeedVR2 7B (Generative Diffusion SOTA)",
+                "confidence": conf
+            }
 
     best_cat = max(scores, key=scores.get)
     best_prob = scores[best_cat]
-
-    if best_cat == "portrait" and best_prob > 0.40:
-        return {
-            "category": "portrait",
-            "tag": "Human Portrait",
-            "label": "Human Portrait & People",
-            "reason": f"Semantic analysis indicates human subject ({best_prob*100:.0f}% confidence). Restores natural facial features.",
-            "suggestedModel": "seedvr2_ema_7b_sharp_fp16",
-            "modelDisplayName": "SeedVR2 7B Sharp (Diffusion SOTA)",
-            "confidence": round(best_prob, 2)
-        }
 
     if best_cat == "screenshot":
         return {
