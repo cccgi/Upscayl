@@ -11,11 +11,11 @@ export interface AnalysisResult {
 export const getDefaultRecommendation = (): AnalysisResult => ({
   category: "photo",
   tag: "General Photo",
-  label: "Standard Photography",
-  reason: "Generative DiT with Euler sampling restores fine organic textures, hair, and surfaces.",
-  suggestedModel: "seedvr2_ema_3b_fp16",
-  modelDisplayName: "SeedVR2 3B (FP16)",
-  confidence: 0.85,
+  label: "Photography / Real-World",
+  reason: "DAT-2 transformer provides peak structural fidelity, crystal clear textures, and zero hallucination.",
+  suggestedModel: "4xRealWebPhoto_v4_dat2",
+  modelDisplayName: "DAT-2 (RealWebPhoto v4)",
+  confidence: 0.88,
 });
 
 export const analyzeImage = async (
@@ -33,8 +33,9 @@ export const analyzeImage = async (
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) return resolve(getDefaultRecommendation());
 
-        // Downscale for instant analysis (max 256x256)
-        const scale = Math.min(1, 256 / Math.max(img.width, img.height));
+        // Downscale to 200x200 for fast analysis
+        const maxDim = 200;
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
         const w = Math.max(1, Math.round(img.width * scale));
         const h = Math.max(1, Math.round(img.height * scale));
 
@@ -47,9 +48,7 @@ export const analyzeImage = async (
         const totalPixels = w * h;
 
         let skinPixels = 0;
-        let totalSat = 0;
-        let saturatedPixels = 0;
-        const colorPalette = new Set<number>();
+        let darkInkLinePixels = 0;
         const grayscale = new Float32Array(totalPixels);
 
         for (let i = 0; i < totalPixels; i++) {
@@ -61,35 +60,42 @@ export const analyzeImage = async (
           const gray = 0.299 * r + 0.587 * g + 0.114 * b;
           grayscale[i] = gray;
 
-          // Palette quantization (12-bit RGB) to assess color complexity
-          const qColor = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
-          colorPalette.add(qColor);
+          // Check for pure dark/black ink line art (anime signature)
+          if (r < 35 && g < 35 && b < 35) {
+            darkInkLinePixels++;
+          }
 
-          // HSV Saturation
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          const delta = max - min;
-          const sat = max === 0 ? 0 : delta / max;
-          totalSat += sat;
-          if (sat > 0.45) saturatedPixels++;
+          // Robust human skin chromaticity detection:
+          // Works across fair, olive, brown, and dark skin tones
+          const sum = r + g + b;
+          if (sum > 70) {
+            const normR = r / sum;
+            const normG = g / sum;
+            const isSkinRange =
+              normR >= 0.35 &&
+              normR <= 0.56 &&
+              normG >= 0.25 &&
+              normG <= 0.39 &&
+              normR > normG &&
+              r > b;
 
-          // Skin tone heuristic in RGB space
-          if (
-            r > 95 &&
-            g > 40 &&
-            b > 20 &&
-            delta > 15 &&
-            Math.abs(r - g) > 15 &&
-            r > g &&
-            r > b
-          ) {
-            skinPixels++;
+            const isRgbHeuristic =
+              r > 55 &&
+              g > 35 &&
+              b > 20 &&
+              r > g &&
+              r > b &&
+              r - g >= 8 &&
+              Math.max(r, g, b) - Math.min(r, g, b) >= 10;
+
+            if (isSkinRange || isRgbHeuristic) {
+              skinPixels++;
+            }
           }
         }
 
         const skinRatio = skinPixels / totalPixels;
-        const avgSat = totalSat / totalPixels;
-        const uniqueColorsRatio = colorPalette.size / totalPixels;
+        const darkInkRatio = darkInkLinePixels / totalPixels;
 
         // Laplacian edge & high-frequency texture detection
         let lapVarSum = 0;
@@ -104,71 +110,71 @@ export const analyzeImage = async (
               grayscale[idx + 1] -
               4 * grayscale[idx];
             lapVarSum += lap * lap;
-            if (Math.abs(lap) > 28) edgeCount++;
+            if (Math.abs(lap) > 25) edgeCount++;
           }
         }
         const lapVariance = lapVarSum / (totalPixels - 2 * w - 2 * h);
         const edgeDensity = edgeCount / totalPixels;
 
-        const isLowRes = img.width <= 600 && img.height <= 600;
+        const isLowRes = img.width <= 512 && img.height <= 512;
         const isJpeg =
           imagePath.toLowerCase().endsWith(".jpg") ||
           imagePath.toLowerCase().endsWith(".jpeg");
 
-        // 1. Anime / Digital Art / Vector
-        // Low color palette entropy with strong line art edges or high saturation
-        if (uniqueColorsRatio < 0.1 && (edgeDensity > 0.08 || avgSat > 0.35)) {
-          return resolve({
-            category: "anime",
-            tag: "Anime / Digital Art",
-            label: "Digital Art & Illustration",
-            reason:
-              "Detected flat color fields and distinct line art. 4x-AnimeSharp preserves crisp outlines without ringing artifacts.",
-            suggestedModel: "4x-AnimeSharp",
-            modelDisplayName: "4x-AnimeSharp",
-            confidence: 0.94,
-          });
-        }
-
-        // 2. Human Portrait / Facial Photography
-        // High skin pixel presence (>11%)
-        if (skinRatio > 0.11) {
+        // PRIORITY 1: Human Portrait / People / Skin Features
+        // In AI generated portraits (Krea, Midjourney, Flux) or real photos, skin ratio is present
+        if (skinRatio >= 0.05) {
           return resolve({
             category: "portrait",
             tag: "Portrait / Facial Photo",
             label: "Human Portrait & Skin",
             reason:
-              "Detected facial features and skin tones. SeedVR2 7B Sharp reconstructs realistic facial pores, hair, and eye micro-details.",
+              "Detected human facial features and skin tones. SeedVR2 7B Sharp DiT reconstructs realistic skin pores, hair strands, and eye micro-details.",
             suggestedModel: "seedvr2_ema_7b_sharp_fp16",
             modelDisplayName: "SeedVR2 7B Sharp (FP16)",
-            confidence: 0.96,
+            confidence: 0.95,
           });
         }
 
-        // 3. Compressed / Low-Res Web Image
-        if (isLowRes && isJpeg && lapVariance < 600) {
+        // PRIORITY 2: Anime / Line Art (Requires dark ink boundaries + no skin presence)
+        // Must have distinct dark ink lines AND low organic texture
+        if (skinRatio < 0.03 && darkInkRatio > 0.035 && edgeDensity > 0.09) {
+          return resolve({
+            category: "anime",
+            tag: "Anime / Digital Art",
+            label: "Digital Art & Illustration",
+            reason:
+              "Detected flat color fields and dark line art ink strokes. 4x-AnimeSharp preserves crisp outlines without ringing artifacts.",
+            suggestedModel: "4x-AnimeSharp",
+            modelDisplayName: "4x-AnimeSharp",
+            confidence: 0.93,
+          });
+        }
+
+        // PRIORITY 3: Heavily Compressed / Low-Res Photo
+        if (isLowRes && isJpeg && lapVariance < 450) {
           return resolve({
             category: "compressed",
             tag: "Low-Res / Compressed Photo",
             label: "Compression Noise Detected",
             reason:
-              "Detected small resolution and JPEG compression. SeedVR2 generative diffusion repairs block artifacts and hallucinates realistic details.",
+              "Detected small resolution with compression artifacts. SeedVR2 generative diffusion repairs block damage and synthesizes realistic details.",
             suggestedModel: "seedvr2_ema_3b_fp16",
             modelDisplayName: "SeedVR2 3B (FP16)",
-            confidence: 0.91,
+            confidence: 0.90,
           });
         }
 
-        // 4. Real-World Photography / Architecture / Nature
+        // PRIORITY 4: General Real-World Photography / Architecture / Nature
         return resolve({
           category: "photo",
           tag: "Photography / Real-World",
           label: "Real-World Photography",
           reason:
-            "Detected continuous tone photography. DAT-2 delivers peak structural fidelity, crystal clear textures, and zero hallucination.",
+            "Detected continuous tone photography. DAT-2 provides state-of-the-art structural fidelity, clean textures, and high PSNR without hallucination.",
           suggestedModel: "4xRealWebPhoto_v4_dat2",
           modelDisplayName: "DAT-2 (RealWebPhoto v4)",
-          confidence: 0.93,
+          confidence: 0.92,
         });
       } catch (err) {
         console.error("Smart image analyzer error:", err);

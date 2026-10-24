@@ -1,5 +1,5 @@
 import { useAtom, useAtomValue } from "jotai";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Tooltip } from "react-tooltip";
 import { themeChange } from "theme-change";
 import useLogger from "../../hooks/use-logger";
@@ -62,7 +62,10 @@ function UpscaylSteps({
   const useCustomWidth = useAtomValue(useCustomWidthAtom);
 
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const lastAnalyzedPathRef = useRef<string>("");
+  const autoSelectRef = useRef(autoSelectModel);
+  autoSelectRef.current = autoSelectModel;
 
   const logit = useLogger();
   const { toast } = useToast();
@@ -83,22 +86,27 @@ function UpscaylSteps({
   }, []);
 
   // SMART IMAGE SCANNING & ALGORITHM RECOMMENDATION
+  // Runs strictly once per unique imagePath change to eliminate infinite re-render loops
   useEffect(() => {
     if (!imagePath || batchMode) {
       setAnalysis(null);
+      lastAnalyzedPathRef.current = "";
       return;
     }
 
+    if (lastAnalyzedPathRef.current === imagePath) {
+      return;
+    }
+    lastAnalyzedPathRef.current = imagePath;
+
     let isMounted = true;
-    setIsAnalyzing(true);
 
     analyzeImage(imagePath).then((result) => {
       if (!isMounted) return;
       setAnalysis(result);
-      setIsAnalyzing(false);
 
-      if (autoSelectModel && result?.suggestedModel) {
-        logit("✨ Smart Auto-Selected Model:", result.suggestedModel);
+      if (autoSelectRef.current && result?.suggestedModel) {
+        console.log("✨ Smart Auto-Selected Model:", result.suggestedModel);
         setSelectedModelId(result.suggestedModel);
       }
     });
@@ -106,7 +114,7 @@ function UpscaylSteps({
     return () => {
       isMounted = false;
     };
-  }, [imagePath, batchMode, autoSelectModel, setSelectedModelId, logit]);
+  }, [imagePath, batchMode, setSelectedModelId]);
 
   const upscaylResolution = useMemo(() => {
     const newDimensions = {
