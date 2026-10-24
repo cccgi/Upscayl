@@ -55,3 +55,17 @@ main/utils/*.js
 flags.ts
 *.p12
 dockerfile
+
+# AI / ML Models & Weights (should be downloaded or referenced externally)
+*.pth
+*.pt
+*.bin
+*.param
+*.safetensors
+*.onnx
+*.gguf
+*.ckpt
+resources/models/*
+!resources/models/.gitkeep
+models/*
+!models/.gitkeep

@@ -37,6 +37,7 @@
   "main": "export/electron/index.js",
   "scripts": {
     "clean": "rimraf dist renderer/.next renderer/out",
+    "download-models": "node scripts/download-models.js",
     "start": "tsc && electron .",
     "dev": "tsc && electron .",
     "build": "tsc && npm run validate-schema && next build renderer",
