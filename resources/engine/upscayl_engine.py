@@ -6,6 +6,7 @@ Supports:
   - SOTA CNNs (Real-ESRGAN, UltraSharp, Remacri, NMKD, AnimeSharp, SPAN, Compact) via Spandrel
   - Smooth Hann-cosine feathered tiled inference for large images
   - Compatible CLI arguments and progress protocol for Upscayl Electron frontend
+  - Adaptive smart batch upscaling with per-image model mapping and GPU weight caching
 """
 
 import sys
@@ -15,7 +16,8 @@ import glob
 from pathlib import Path
 import math
 import time
-from typing import Optional
+import json
+from typing import Optional, Any, Tuple
 
 # Ensure UTF-8 output on Windows
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -73,31 +75,35 @@ def run_spandrel_upscale(
     custom_width: Optional[int] = None,
     tile_size: int = 1024,
     tile_overlap: int = 48,
-    device: str = "cuda"
-):
+    device: str = "cuda",
+    cached_model_tuple: Optional[Tuple[Any, Any, Any]] = None
+) -> Tuple[Any, Any, Any]:
     import torch
     import torchvision.transforms.functional as TF
     from PIL import Image
     import spandrel
 
-    print(f"Loading model via Spandrel: {model_path}", file=sys.stderr, flush=True)
-    print(f"Loading neural model: {os.path.basename(model_path)}", file=sys.stdout, flush=True)
-    loader = spandrel.ModelLoader(device=device)
-    model_desc = loader.load_from_file(model_path)
-    
-    # Determine supported dtype
     device_obj = torch.device(device if torch.cuda.is_available() else "cpu")
-    model = model_desc.model.to(device_obj).eval()
-    
-    use_half = False
-    try:
-        if hasattr(model_desc, "supports_half") and model_desc.supports_half:
-            model = model.half()
-            use_half = True
-    except Exception:
-        use_half = False
 
-    dtype = torch.float16 if use_half else torch.float32
+    if cached_model_tuple is not None:
+        model, model_desc, dtype = cached_model_tuple
+    else:
+        print(f"Loading model via Spandrel: {model_path}", file=sys.stderr, flush=True)
+        print(f"Loading neural model: {os.path.basename(model_path)}", file=sys.stdout, flush=True)
+        loader = spandrel.ModelLoader(device=device)
+        model_desc = loader.load_from_file(model_path)
+        
+        # Determine supported dtype
+        model = model_desc.model.to(device_obj).eval()
+        use_half = False
+        try:
+            if hasattr(model_desc, "supports_half") and model_desc.supports_half:
+                model = model.half()
+                use_half = True
+        except Exception:
+            use_half = False
+
+        dtype = torch.float16 if use_half else torch.float32
 
     img = Image.open(input_path).convert("RGB")
     w, h = img.size
@@ -190,6 +196,8 @@ def run_spandrel_upscale(
     out_img.save(output_path)
     log_progress(100.0)
     print(f"Upscale complete! Saved to {output_path}", file=sys.stderr, flush=True)
+
+    return (model, model_desc, dtype)
 
 def run_seedvr2_upscale(
     input_path: str,
@@ -375,6 +383,7 @@ def main():
     parser.add_argument("-x", "--tta", action="store_true", help="TTA mode")
     parser.add_argument("--resolution", default=None, help="Target resolution for SeedVR2 (default: auto)")
     parser.add_argument("--color_correction", default="lab", help="Color correction for SeedVR2")
+    parser.add_argument("--model_mapping", default=None, help="JSON file mapping filenames to specific models")
 
     args = parser.parse_args()
 
@@ -392,12 +401,19 @@ def main():
         r"E:\models"
     ]
 
-    model_lower = args.model_name.lower()
-    is_seedvr = "seedvr" in model_lower or "seed" in model_lower
-
     target_scale = float(args.scale) if args.scale else 4.0
     custom_w = int(args.custom_width) if args.custom_width and args.custom_width.isdigit() else None
     tile_sz = int(args.tile_size) if args.tile_size and args.tile_size.isdigit() else 1024
+
+    # Load model mapping if provided
+    model_mapping = {}
+    if args.model_mapping and os.path.isfile(args.model_mapping):
+        try:
+            with open(args.model_mapping, "r", encoding="utf-8") as f:
+                model_mapping = json.load(f)
+            print(f"Loaded model mapping with {len(model_mapping)} per-file rules.", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"Warning: Failed to parse model_mapping file: {e}", file=sys.stderr, flush=True)
 
     # Determine if input is a single file or a folder
     if os.path.isfile(args.input):
@@ -417,32 +433,64 @@ def main():
         raise FileNotFoundError(f"Input path does not exist: {args.input}")
 
     total_images = len(inputs)
+    spandrel_model_cache = {}  # Cache loaded models on GPU to avoid reloading weights repeatedly
+
     for idx, (in_file, out_file) in enumerate(inputs):
+        in_stem = Path(in_file).name
+        # Resolve model for this specific image:
+        assigned_model = (
+            model_mapping.get(in_stem)
+            or model_mapping.get(in_file)
+            or args.model_name
+        )
+
+        if assigned_model.lower() == "auto":
+            try:
+                from classifier_service import classify_image
+                clf = classify_image(in_file)
+                assigned_model = clf.get("suggestedModel", "4xRealWebPhoto_v4_dat2")
+            except Exception:
+                assigned_model = "4xRealWebPhoto_v4_dat2"
+
+        print(f"[{idx+1}/{total_images}] Processing {in_stem} with model '{assigned_model}'", file=sys.stdout, flush=True)
         print(f"[{idx+1}/{total_images}] Processing {in_file} -> {out_file}", file=sys.stderr, flush=True)
+
+        is_seedvr = "seedvr" in assigned_model.lower() or "seed" in assigned_model.lower()
+
         if is_seedvr:
             res = int(args.resolution) if args.resolution and args.resolution.isdigit() else None
             run_seedvr2_upscale(
                 input_path=in_file,
                 output_path=out_file,
-                dit_model=args.model_name,
+                dit_model=assigned_model,
                 resolution=res,
                 target_scale=target_scale,
                 custom_width=custom_w,
                 color_correction=args.color_correction
             )
         else:
-            # Spandrel / PyTorch model
-            model_file = find_model_file(args.model_name, search_dirs)
+            model_file = find_model_file(assigned_model, search_dirs)
             if not model_file:
-                raise FileNotFoundError(f"Could not locate model '{args.model_name}' in search paths.")
-            run_spandrel_upscale(
+                raise FileNotFoundError(f"Could not locate model '{assigned_model}' in search paths.")
+            
+            cached_tuple = spandrel_model_cache.get(model_file)
+            loaded_tuple = run_spandrel_upscale(
                 input_path=in_file,
                 output_path=out_file,
                 model_path=model_file,
                 target_scale=target_scale,
                 custom_width=custom_w,
-                tile_size=tile_sz
+                tile_size=tile_sz,
+                cached_model_tuple=cached_tuple
             )
+            if cached_tuple is None and model_file:
+                spandrel_model_cache[model_file] = loaded_tuple
+
+        # Report batch progress
+        batch_pct = ((idx + 1) / total_images) * 100.0
+        log_progress(batch_pct)
+
+    log_progress(100.0)
 
 if __name__ == "__main__":
     main()

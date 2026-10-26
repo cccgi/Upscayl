@@ -12,6 +12,10 @@ import {
   useCustomWidthAtom,
   selectedModelIdAtom,
   autoSelectModelAtom,
+  batchReportAtom,
+  batchScanningAtom,
+  useAdaptiveBatchAtom,
+  batchModelMappingAtom,
 } from "../../../atoms/user-settings-atom";
 import { FEATURE_FLAGS } from "@common/feature-flags";
 import { ELECTRON_COMMANDS } from "@common/electron-commands";
@@ -19,9 +23,21 @@ import { useToast } from "@/components/ui/use-toast";
 import { translationAtom } from "@/atoms/translations-atom";
 import { SelectImageScale } from "../settings-tab/select-image-scale";
 import SelectModelDialog from "./select-model-dialog";
+import BatchModelCustomizerDialog from "./batch-model-customizer-dialog";
 import { ImageFormat } from "@/lib/valid-formats";
-import { analyzeImage, AnalysisResult } from "@/lib/image-analyzer";
-import { ArrowRight, Check, Sparkles, Wand2 } from "lucide-react";
+import {
+  analyzeImage,
+  analyzeBatchFolder,
+  AnalysisResult,
+} from "@/lib/image-analyzer";
+import {
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Layers,
+  Sparkles,
+  Wand2,
+} from "lucide-react";
 
 interface IProps {
   selectImageHandler: () => Promise<void>;
@@ -30,6 +46,7 @@ interface IProps {
   batchMode: boolean;
   setBatchMode: React.Dispatch<React.SetStateAction<boolean>>;
   imagePath: string;
+  batchFolderPath?: string;
   doubleUpscayl: boolean;
   setDoubleUpscayl: React.Dispatch<React.SetStateAction<boolean>>;
   dimensions: {
@@ -47,6 +64,7 @@ function UpscaylSteps({
   batchMode,
   setBatchMode,
   imagePath,
+  batchFolderPath = "",
   doubleUpscayl,
   setDoubleUpscayl,
   dimensions,
@@ -57,6 +75,11 @@ function UpscaylSteps({
   const [selectedModelId, setSelectedModelId] = useAtom(selectedModelIdAtom);
   const [autoSelectModel, setAutoSelectModel] = useAtom(autoSelectModelAtom);
 
+  const [batchReport, setBatchReport] = useAtom(batchReportAtom);
+  const [batchScanning, setBatchScanning] = useAtom(batchScanningAtom);
+  const [useAdaptiveBatch, setUseAdaptiveBatch] = useAtom(useAdaptiveBatchAtom);
+  const [, setBatchModelMapping] = useAtom(batchModelMappingAtom);
+
   const rememberOutputFolder = useAtomValue(rememberOutputFolderAtom);
   const customWidth = useAtomValue(customWidthAtom);
   const useCustomWidth = useAtomValue(useCustomWidthAtom);
@@ -64,6 +87,7 @@ function UpscaylSteps({
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
   const lastAnalyzedPathRef = useRef<string>("");
+  const lastAnalyzedBatchFolderRef = useRef<string>("");
   const autoSelectRef = useRef(autoSelectModel);
   autoSelectRef.current = autoSelectModel;
 
@@ -85,8 +109,7 @@ function UpscaylSteps({
     themeChange(false);
   }, []);
 
-  // SMART IMAGE SCANNING & ALGORITHM RECOMMENDATION
-  // Runs strictly once per unique imagePath change to eliminate infinite re-render loops
+  // SMART IMAGE SCANNING (Single Image Mode)
   useEffect(() => {
     if (!imagePath || batchMode) {
       setAnalysis(null);
@@ -115,6 +138,67 @@ function UpscaylSteps({
       isMounted = false;
     };
   }, [imagePath, batchMode, setSelectedModelId]);
+
+  // SMART BATCH FOLDER SCANNING (Batch Mode)
+  useEffect(() => {
+    if (!batchMode || !batchFolderPath) {
+      if (!batchMode) {
+        setBatchReport(null);
+        setBatchScanning(false);
+        lastAnalyzedBatchFolderRef.current = "";
+      }
+      return;
+    }
+
+    if (lastAnalyzedBatchFolderRef.current === batchFolderPath) {
+      return;
+    }
+    lastAnalyzedBatchFolderRef.current = batchFolderPath;
+
+    let isMounted = true;
+    setBatchScanning(true);
+
+    analyzeBatchFolder(batchFolderPath)
+      .then((report) => {
+        if (!isMounted) return;
+        setBatchReport(report);
+        setBatchScanning(false);
+
+        if (report && report.items && report.items.length > 0) {
+          const mapping: Record<string, string> = {};
+          for (const item of report.items) {
+            mapping[item.filename] = item.suggestedModel;
+          }
+          setBatchModelMapping(mapping);
+
+          if (report.isMixed) {
+            setUseAdaptiveBatch(true);
+          } else {
+            setUseAdaptiveBatch(false);
+            if (report.dominantModel) {
+              setSelectedModelId(report.dominantModel);
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error("Batch folder analysis error:", err);
+        setBatchScanning(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    batchFolderPath,
+    batchMode,
+    setBatchReport,
+    setBatchScanning,
+    setBatchModelMapping,
+    setUseAdaptiveBatch,
+    setSelectedModelId,
+  ]);
 
   const upscaylResolution = useMemo(() => {
     const newDimensions = {
@@ -186,12 +270,100 @@ function UpscaylSteps({
           className="btn btn-primary"
           onClick={!batchMode ? selectImageHandler : selectFolderHandler}
           data-tooltip-id="tooltip"
-          data-tooltip-content={imagePath}
+          data-tooltip-content={batchMode ? batchFolderPath : imagePath}
         >
           {batchMode
             ? t("APP.FILE_SELECTION.BATCH_MODE_TYPE")
             : t("APP.FILE_SELECTION.SINGLE_MODE_TYPE")}
         </button>
+
+        {/* BATCH SCANNING SPINNER */}
+        {batchMode && batchScanning && (
+          <div className="mt-2.5 rounded-lg border border-primary/30 bg-base-200/60 p-2.5 flex items-center gap-2.5 animate-pulse">
+            <span className="loading loading-spinner loading-xs text-primary shrink-0"></span>
+            <span className="text-xs font-medium text-base-content/90 truncate">
+              Scanning folder contents with Vision AI...
+            </span>
+          </div>
+        )}
+
+        {/* BATCH REPORT: MIXED CONTENT DETECTED */}
+        {batchMode && !batchScanning && batchReport && batchReport.isMixed && (
+          <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3 flex flex-col gap-2.5 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold flex items-center gap-1.5 text-warning">
+                <Layers className="h-4 w-4 shrink-0" />
+                Mixed Content ({batchReport.totalImages} images)
+              </span>
+              <span className="badge badge-warning badge-xs text-[10px] font-semibold">
+                Multi-Model
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1 text-[11px]">
+              {Object.entries(batchReport.categoryCounts).map(([cat, count]) => (
+                <span
+                  key={cat}
+                  className="badge badge-neutral badge-xs text-[10px] py-1 px-1.5 capitalize"
+                >
+                  {cat === "portrait" && "👤 "}
+                  {cat === "anime" && "🎨 "}
+                  {cat === "photo" && "📷 "}
+                  {cat === "graphic" && "💻 "}
+                  {count} {cat}
+                </span>
+              ))}
+            </div>
+
+            <div className="divider my-0"></div>
+
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-xs checkbox-primary"
+                  checked={useAdaptiveBatch}
+                  onChange={(e) => setUseAdaptiveBatch(e.target.checked)}
+                />
+                <span className="text-xs font-medium">
+                  Adaptive Smart Upscaling
+                </span>
+              </label>
+
+              {useAdaptiveBatch && <BatchModelCustomizerDialog />}
+            </div>
+
+            <p className="text-[10px] text-base-content/70 leading-tight">
+              {useAdaptiveBatch
+                ? "Each image will automatically use its best matched specialized model."
+                : "Single-model mode: Selected model in Step 2 will be applied to all images."}
+            </p>
+          </div>
+        )}
+
+        {/* BATCH REPORT: UNIFORM CONTENT */}
+        {batchMode && !batchScanning && batchReport && !batchReport.isMixed && (
+          <div className="mt-3 rounded-lg border border-success/30 bg-success/5 p-2.5 flex items-center justify-between gap-2 transition-all">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-success capitalize truncate">
+                  Uniform {batchReport.dominantCategory} ({batchReport.totalImages} images)
+                </p>
+                <p className="text-[10px] text-base-content/70 truncate">
+                  Auto-selected: {batchReport.dominantModel}
+                </p>
+              </div>
+            </div>
+            <BatchModelCustomizerDialog
+              triggerButton={
+                <button className="btn btn-ghost btn-xs text-[11px] text-base-content/70 shrink-0">
+                  Review
+                </button>
+              }
+            />
+          </div>
+        )}
       </div>
 
       {/* STEP 2 */}
@@ -205,13 +377,43 @@ function UpscaylSteps({
                 {analysis.tag}
               </span>
             )}
+            {batchMode && useAdaptiveBatch && batchReport?.isMixed && (
+              <span className="badge badge-warning badge-sm font-semibold gap-1 text-[11px]">
+                <Sparkles className="h-3 w-3" />
+                Adaptive Active
+              </span>
+            )}
           </div>
-          <p className="mb-2 text-sm">{t("APP.MODEL_SELECTION.DESCRIPTION")}</p>
 
-          <SelectModelDialog />
+          {batchMode && useAdaptiveBatch && batchReport?.isMixed ? (
+            <div className="rounded-lg border border-primary/25 bg-base-200/60 p-3 mb-2 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold flex items-center gap-1.5 text-primary">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Multi-Model Adaptive Mode
+                </span>
+                <BatchModelCustomizerDialog
+                  triggerButton={
+                    <button className="btn btn-primary btn-xs text-[10px] font-semibold h-6 min-h-6">
+                      Customize Per-Image
+                    </button>
+                  }
+                />
+              </div>
+              <p className="text-[11px] text-base-content/80 leading-relaxed">
+                Upscayl will run portrait faces on FaceUpDAT, anime on AnimeSharp, and photos on DAT-2. You can also pick a default fallback below.
+              </p>
+              <SelectModelDialog />
+            </div>
+          ) : (
+            <>
+              <p className="mb-2 text-sm">{t("APP.MODEL_SELECTION.DESCRIPTION")}</p>
+              <SelectModelDialog />
+            </>
+          )}
         </div>
 
-        {/* SMART IMAGE DETECTION & ALGORITHM RECOMMENDATION */}
+        {/* SMART IMAGE DETECTION & ALGORITHM RECOMMENDATION (Single Image Mode) */}
         {analysis && !batchMode && (
           <div className="rounded-lg border border-primary/25 bg-base-200/60 p-3 flex flex-col gap-2 transition-all">
             <div className="flex items-center justify-between text-xs">

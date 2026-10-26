@@ -1,5 +1,6 @@
 import { ImageFormat } from "@/lib/valid-formats";
 import { ModelId } from "@common/models-list";
+import { BatchAnalysisReport } from "@common/types/types";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 
@@ -28,6 +29,10 @@ export const saveImageAsAtom = atomWithStorage<ImageFormat>(
 export const scaleAtom = atomWithStorage<string>("scale", "4");
 
 export const batchModeAtom = atom<boolean>(false);
+export const batchReportAtom = atom(null as BatchAnalysisReport | null);
+export const batchScanningAtom = atom<boolean>(false);
+export const useAdaptiveBatchAtom = atomWithStorage<boolean>("useAdaptiveBatch", true);
+export const batchModelMappingAtom = atom({} as Record<string, string>);
 
 /**
  * The path to the last folder the user saved an image to.

@@ -21,6 +21,8 @@ import {
   userStatsAtom,
   ttaModeAtom,
   copyMetadataAtom,
+  useAdaptiveBatchAtom,
+  batchModelMappingAtom,
 } from "../../atoms/user-settings-atom";
 import useLogger from "../hooks/use-logger";
 import {
@@ -95,6 +97,8 @@ const Sidebar = ({
   const setUserStats = useSetAtom(userStatsAtom);
   const ttaMode = useAtomValue(ttaModeAtom);
   const [copyMetadata] = useAtom(copyMetadataAtom);
+  const useAdaptiveBatch = useAtomValue(useAdaptiveBatchAtom);
+  const batchModelMapping = useAtomValue(batchModelMappingAtom);
 
   const upscaylHandler = async () => {
     logit("🔄 Resetting Upscaled Image Path");
@@ -133,12 +137,16 @@ const Sidebar = ({
       } else if (batchMode) {
         // Batch Upscayl
         setDoubleUpscayl(false);
+        const effectiveModel = useAdaptiveBatch ? "auto" : selectedModelId;
+        const effectiveMapping = useAdaptiveBatch ? batchModelMapping : undefined;
+
         window.electron.send<BatchUpscaylPayload>(
           ELECTRON_COMMANDS.FOLDER_UPSCAYL,
           {
             batchFolderPath,
             outputPath,
-            model: selectedModelId,
+            model: effectiveModel,
+            modelMapping: effectiveMapping,
             gpuId: gpuId.length === 0 ? null : gpuId,
             saveImageAs,
             scale,
@@ -231,6 +239,7 @@ const Sidebar = ({
             batchMode={batchMode}
             setBatchMode={setBatchMode}
             imagePath={imagePath}
+            batchFolderPath={batchFolderPath}
             doubleUpscayl={doubleUpscayl}
             setDoubleUpscayl={setDoubleUpscayl}
             dimensions={dimensions}

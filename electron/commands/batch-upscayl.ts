@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import { getMainWindow } from "../main-window";
 import {
   childProcesses,
@@ -34,13 +35,35 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
   let inputDir = decodeURIComponent(payload.batchFolderPath);
   // GET THE OUTPUT DIRECTORY
   let outputFolderPath = decodeURIComponent(payload.outputPath);
-  const outputFolderName = `upscayl_${saveImageAs}_${model}_${
+
+  const isAdaptive =
+    model === "auto" ||
+    (payload.modelMapping && Object.keys(payload.modelMapping).length > 0);
+  const folderModelTag = isAdaptive ? "adaptive" : model;
+
+  const outputFolderName = `upscayl_${saveImageAs}_${folderModelTag}_${
     useCustomWidth ? `${customWidth}px` : `${scale}x`
   }`;
   outputFolderPath += slash + outputFolderName;
   // CREATE THE OUTPUT DIRECTORY
   if (!fs.existsSync(outputFolderPath)) {
     fs.mkdirSync(outputFolderPath, { recursive: true });
+  }
+
+  // Handle per-image model mapping for adaptive batch upscaling
+  let modelMappingPath = "";
+  if (payload.modelMapping && Object.keys(payload.modelMapping).length > 0) {
+    modelMappingPath = path.join(outputFolderPath, ".model_mapping.json");
+    try {
+      fs.writeFileSync(
+        modelMappingPath,
+        JSON.stringify(payload.modelMapping, null, 2),
+        "utf-8",
+      );
+      logit("✨ Adaptive batch model mapping written to:", modelMappingPath);
+    } catch (e) {
+      logit("⚠️ Failed to write model mapping file:", e);
+    }
   }
 
   const isDefaultModel = model in MODELS;
@@ -54,6 +77,7 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
         ? modelsPath
         : (savedCustomModelsPath ?? modelsPath),
       model,
+      modelMappingPath,
       gpuId,
       saveImageAs,
       scale,
@@ -118,16 +142,16 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
             const outFile = outputFolderPath + slash + file;
             const originalFile = inputDir + slash + file;
             if (fs.existsSync(outFile) && fs.existsSync(originalFile)) {
-                try {
-                  await copyMetadata(inputDir, outFile);
-                  logit("✅ Metadata copied to: ", outFile);
-                } catch (error) {
-                  logit("❌ Error copying metadata: ", error);
-                  mainWindow.webContents.send(
-                    ELECTRON_COMMANDS.METADATA_ERROR,
-                    error,
-                  );
-                } 
+              try {
+                await copyMetadata(inputDir, outFile);
+                logit("✅ Metadata copied to: ", outFile);
+              } catch (error) {
+                logit("❌ Error copying metadata: ", error);
+                mainWindow.webContents.send(
+                  ELECTRON_COMMANDS.METADATA_ERROR,
+                  error,
+                );
+              }
             }
           }
         } catch (err) {

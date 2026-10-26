@@ -10,6 +10,9 @@ import {
   progressAtom,
   viewTypeAtom,
   rememberOutputFolderAtom,
+  batchReportAtom,
+  batchScanningAtom,
+  useAdaptiveBatchAtom,
 } from "../../atoms/user-settings-atom";
 import { useToast } from "@/components/ui/use-toast";
 import { sanitizePath } from "@common/sanitize-path";
@@ -25,6 +28,7 @@ import LensViewer from "./lens-view";
 import ImageViewer from "./image-viewer";
 import useTranslation from "../hooks/use-translation";
 import SliderView from "./slider-view";
+import { CheckCircle2, Folder, Layers, Sparkles } from "lucide-react";
 
 type MainContentProps = {
   imagePath: string;
@@ -66,6 +70,9 @@ const MainContent = ({
   const [outputPath, setOutputPath] = useAtom(savedOutputPathAtom);
   const progress = useAtomValue(progressAtom);
   const batchMode = useAtomValue(batchModeAtom);
+  const batchReport = useAtomValue(batchReportAtom);
+  const batchScanning = useAtomValue(batchScanningAtom);
+  const useAdaptiveBatch = useAtomValue(useAdaptiveBatchAtom);
 
   const viewType = useAtomValue(viewTypeAtom);
   const lensSize = useAtomValue(lensSizeAtom);
@@ -310,19 +317,83 @@ const MainContent = ({
           />
         )}
 
-      {/* BATCH UPSCALE SHOW SELECTED FOLDER */}
+      {/* BATCH UPSCALE SHOW SELECTED FOLDER OVERVIEW */}
       {batchMode &&
+        progress.length === 0 &&
         upscaledBatchFolderPath.length === 0 &&
         batchFolderPath.length > 0 && (
-          <p className="select-none text-base-content">
-            <span className="font-bold">
-              {t("APP.PROGRESS.BATCH.SELECTED_FOLDER_TITLE")}
-            </span>{" "}
-            {batchFolderPath}
-          </p>
-        )}
-      {/* BATCH UPSCALE DONE INFO */}
+          <div className="z-20 flex flex-col items-center justify-center p-8 max-w-lg w-full">
+            <div className="w-full rounded-2xl border border-base-300 bg-base-100/90 backdrop-blur-md p-6 shadow-2xl flex flex-col items-center text-center gap-4 animate-step-in">
+              <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+                <Folder className="h-10 w-10" />
+              </div>
 
+              <div className="space-y-1 max-w-full">
+                <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
+                  {t("APP.PROGRESS.BATCH.SELECTED_FOLDER_TITLE")}
+                </h3>
+                <p className="text-xs font-mono font-medium text-base-content break-all px-3 py-1.5 rounded-lg bg-base-200/80 border border-base-300">
+                  {batchFolderPath}
+                </p>
+              </div>
+
+              {batchScanning && (
+                <div className="flex items-center gap-2.5 py-2 px-4 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary animate-pulse">
+                  <span className="loading loading-spinner loading-xs"></span>
+                  <span>Scanning images with Vision AI...</span>
+                </div>
+              )}
+
+              {!batchScanning && batchReport && (
+                <div className="w-full space-y-3 pt-1">
+                  <div className="flex items-center justify-center gap-2">
+                    {batchReport.isMixed ? (
+                      <span className="badge badge-warning gap-1.5 font-semibold text-xs py-3 px-3">
+                        <Layers className="h-3.5 w-3.5" />
+                        Mixed Content Detected ({batchReport.totalImages} images)
+                      </span>
+                    ) : (
+                      <span className="badge badge-success gap-1.5 font-semibold text-xs py-3 px-3">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Uniform {batchReport.dominantCategory} ({batchReport.totalImages} images)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
+                    {Object.entries(batchReport.categoryCounts).map(([cat, count]) => (
+                      <span
+                        key={cat}
+                        className="badge badge-neutral badge-sm text-[11px] py-2 px-2.5 capitalize"
+                      >
+                        {cat === "portrait" && "👤 "}
+                        {cat === "anime" && "🎨 "}
+                        {cat === "photo" && "📷 "}
+                        {cat === "graphic" && "💻 "}
+                        {count} {cat}
+                      </span>
+                    ))}
+                  </div>
+
+                  {batchReport.isMixed && (
+                    <p className="text-xs text-base-content/70">
+                      {useAdaptiveBatch
+                        ? "✨ Adaptive Smart Upscaling is active. Each image will use its optimal model."
+                        : "Single-model mode selected. Step 2 model will be used for all files."}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 text-xs text-base-content/50">
+                Configure options in the sidebar and click{" "}
+                <span className="text-secondary font-bold">Upscayl</span> to begin.
+              </div>
+            </div>
+          </div>
+        )}
+
+      {/* BATCH UPSCALE DONE INFO */}
       {batchMode && upscaledBatchFolderPath.length > 0 && (
         <div className="z-50 flex flex-col items-center">
           <p className="select-none py-4 font-bold text-base-content">

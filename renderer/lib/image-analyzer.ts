@@ -1,3 +1,5 @@
+import { BatchAnalysisReport } from "@common/types/types";
+
 export interface AnalysisResult {
   category: "portrait" | "photo" | "anime" | "compressed" | "graphic";
   tag: string;
@@ -37,4 +39,26 @@ export const analyzeImage = async (
 
   // Fallback for non-Electron test environments
   return getDefaultRecommendation();
+};
+
+export const analyzeBatchFolder = async (
+  folderPath: string,
+): Promise<BatchAnalysisReport | null> => {
+  if (!folderPath) return null;
+
+  if (typeof window !== "undefined" && (window as any).electron?.invoke) {
+    try {
+      const report: BatchAnalysisReport = await (window as any).electron.invoke(
+        "analyze-batch-folder",
+        folderPath,
+      );
+      if (report && report.totalImages > 0) {
+        return report;
+      }
+    } catch (err) {
+      console.warn("Backend analyze-batch-folder invoke failed:", err);
+    }
+  }
+
+  return null;
 };

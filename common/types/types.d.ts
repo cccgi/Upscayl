@@ -1,5 +1,30 @@
 import { ImageFormat } from "@electron/types/types";
 
+export interface BatchAnalysisItem {
+  path: string;
+  filename: string;
+  category: "portrait" | "photo" | "anime" | "compressed" | "graphic";
+  label: string;
+  tag: string;
+  suggestedModel: string;
+  modelDisplayName: string;
+  confidence: number;
+  reason: string;
+}
+
+export interface BatchAnalysisReport {
+  folderPath: string;
+  totalImages: number;
+  isMixed: boolean;
+  dominantModel: string;
+  dominantCategory: string;
+  dominantCount: number;
+  summaryMessage: string;
+  items: BatchAnalysisItem[];
+  modelCounts: Record<string, number>;
+  categoryCounts: Record<string, number>;
+}
+
 export type ImageUpscaylPayload = {
   imagePath: string;
   outputPath: string;
@@ -40,6 +65,7 @@ export type BatchUpscaylPayload = {
   batchFolderPath: string;
   outputPath: string;
   model: string;
+  modelMapping?: Record<string, string>;
   gpuId: string;
   saveImageAs: ImageFormat;
   scale: string;

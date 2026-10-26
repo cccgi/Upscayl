@@ -2,8 +2,9 @@ import { spawn, ChildProcess } from "child_process";
 import { pythonPath, classifierScriptPath } from "../utils/get-resource-paths";
 import logit from "../utils/logit";
 import fs from "fs";
+import path from "path";
 
-interface AnalysisResult {
+export interface AnalysisResult {
   category: "portrait" | "photo" | "anime" | "compressed" | "graphic";
   tag: string;
   label: string;
@@ -11,6 +12,31 @@ interface AnalysisResult {
   suggestedModel: string;
   modelDisplayName: string;
   confidence: number;
+}
+
+export interface BatchAnalysisItem {
+  path: string;
+  filename: string;
+  category: "portrait" | "photo" | "anime" | "compressed" | "graphic";
+  label: string;
+  tag: string;
+  suggestedModel: string;
+  modelDisplayName: string;
+  confidence: number;
+  reason: string;
+}
+
+export interface BatchAnalysisReport {
+  folderPath: string;
+  totalImages: number;
+  isMixed: boolean;
+  dominantModel: string;
+  dominantCategory: string;
+  dominantCount: number;
+  summaryMessage: string;
+  items: BatchAnalysisItem[];
+  modelCounts: Record<string, number>;
+  categoryCounts: Record<string, number>;
 }
 
 const defaultResult: AnalysisResult = {
@@ -173,4 +199,120 @@ function runSingleShot(imagePath: string): Promise<AnalysisResult> {
       resolve(defaultResult);
     }
   });
+}
+
+export async function analyzeBatchFolder(
+  folderPath: string,
+): Promise<BatchAnalysisReport> {
+  const emptyReport: BatchAnalysisReport = {
+    folderPath,
+    totalImages: 0,
+    isMixed: false,
+    dominantModel: "4xRealWebPhoto_v4_dat2",
+    dominantCategory: "photo",
+    dominantCount: 0,
+    summaryMessage: "No valid images detected in folder.",
+    items: [],
+    modelCounts: {},
+    categoryCounts: {},
+  };
+
+  if (!folderPath || !fs.existsSync(folderPath)) {
+    return emptyReport;
+  }
+
+  try {
+    const stat = fs.statSync(folderPath);
+    if (!stat.isDirectory()) {
+      return emptyReport;
+    }
+
+    const VALID_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp"]);
+    const files = fs
+      .readdirSync(folderPath)
+      .filter((f) => VALID_EXTS.has(path.extname(f).toLowerCase()))
+      .sort();
+
+    if (files.length === 0) {
+      return emptyReport;
+    }
+
+    const items: BatchAnalysisItem[] = [];
+    const modelCounts: Record<string, number> = {};
+    const categoryCounts: Record<string, number> = {};
+
+    // Run rapid batch classification through the daemon
+    for (const f of files) {
+      const fullPath = path.join(folderPath, f);
+      try {
+        const res = await analyzeImageFile(fullPath);
+        items.push({
+          path: fullPath,
+          filename: f,
+          category: res.category,
+          label: res.label,
+          tag: res.tag,
+          suggestedModel: res.suggestedModel,
+          modelDisplayName: res.modelDisplayName,
+          confidence: res.confidence,
+          reason: res.reason,
+        });
+
+        modelCounts[res.suggestedModel] =
+          (modelCounts[res.suggestedModel] || 0) + 1;
+        categoryCounts[res.category] =
+          (categoryCounts[res.category] || 0) + 1;
+      } catch (err) {
+        logit(`⚠️ Error analyzing batch file ${f}:`, err);
+      }
+    }
+
+    const sortedModels = Object.entries(modelCounts).sort(
+      (a, b) => b[1] - a[1],
+    );
+    const dominantModel = sortedModels[0]?.[0] || "4xRealWebPhoto_v4_dat2";
+    const dominantCount = sortedModels[0]?.[1] || 0;
+
+    const sortedCats = Object.entries(categoryCounts).sort(
+      (a, b) => b[1] - a[1],
+    );
+    const dominantCategory = sortedCats[0]?.[0] || "photo";
+
+    // Mixed if more than 1 distinct model is recommended across images
+    const isMixed = items.length > 1 && sortedModels.length > 1;
+
+    let summaryMessage = "";
+    if (!isMixed) {
+      summaryMessage = `✨ Uniform Content: All ${items.length} images detected as ${items[0]?.tag || dominantCategory}. Recommended model: ${dominantModel}.`;
+    } else {
+      const parts = sortedCats.map(([cat, count]) => {
+        const catName =
+          cat === "portrait"
+            ? "Portraits"
+            : cat === "anime"
+            ? "Anime Art"
+            : cat === "graphic"
+            ? "UI/Diagrams"
+            : "Photos";
+        return `${count} ${catName}`;
+      });
+      summaryMessage = `⚡ Mixed Content Detected (${items.length} files: ${parts.join(", ")}). Adaptive per-image models available.`;
+    }
+
+    return {
+      folderPath,
+      totalImages: items.length,
+      isMixed,
+      dominantModel,
+      dominantCategory,
+      dominantCount,
+      summaryMessage,
+      items,
+      modelCounts,
+      categoryCounts,
+    };
+  } catch (err) {
+    logit("🚨 Batch folder analysis error:", err);
+    return emptyReport;
+  }
 }

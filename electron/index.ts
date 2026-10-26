@@ -20,7 +20,7 @@ import autoUpdate from "./commands/auto-update";
 import { FEATURE_FLAGS } from "../common/feature-flags";
 import settings from "electron-settings";
 import pasteImage from "./commands/paste-image";
-import { analyzeImageFile } from "./commands/analyze-image";
+import { analyzeImageFile, analyzeBatchFolder } from "./commands/analyze-image";
 import path from "path";
 
 // INITIALIZATION
@@ -107,6 +107,10 @@ ipcMain.on(ELECTRON_COMMANDS.PASTE_IMAGE, pasteImage);
 
 ipcMain.handle("analyze-image", async (_event, imagePath: string) => {
   return await analyzeImageFile(imagePath);
+});
+
+ipcMain.handle("analyze-batch-folder", async (_event, folderPath: string) => {
+  return await analyzeBatchFolder(folderPath);
 });
 
 ipcMain.handle("get-gpu-info", async () => {
