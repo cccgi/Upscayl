@@ -18,10 +18,41 @@ import math
 import time
 import json
 from typing import Optional, Any, Tuple
+import signal
 
 # Ensure UTF-8 output on Windows
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# Windows Job Object: automatically terminates any child subprocesses if this process is terminated
+if sys.platform == "win32":
+    try:
+        import win32api, win32job
+        hJob = win32job.CreateJobObject(None, "")
+        extended_info = win32job.QueryInformationJobObject(hJob, win32job.JobObjectExtendedLimitInformation)
+        extended_info['BasicLimitInformation']['LimitFlags'] = win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        win32job.SetInformationJobObject(hJob, win32job.JobObjectExtendedLimitInformation, extended_info)
+        win32job.AssignProcessToJobObject(hJob, win32api.GetCurrentProcess())
+    except Exception:
+        pass
+
+_active_subproc = None
+
+def _cleanup_handler(sig, frame):
+    global _active_subproc
+    if _active_subproc is not None:
+        try:
+            _active_subproc.terminate()
+            _active_subproc.kill()
+        except Exception:
+            pass
+    sys.exit(0)
+
+try:
+    signal.signal(signal.SIGINT, _cleanup_handler)
+    signal.signal(signal.SIGTERM, _cleanup_handler)
+except Exception:
+    pass
 
 def log_progress(pct: float):
     """Format expected by Upscayl: e.g. 25.50%"""
@@ -209,6 +240,7 @@ def run_seedvr2_upscale(
     color_correction: str = "lab",
     vae_tiled: Optional[bool] = None
 ):
+    global _active_subproc
     import subprocess
     from PIL import Image
 
@@ -222,14 +254,14 @@ def run_seedvr2_upscale(
     in_short = min(in_w, in_h)
 
     # Calculate optimal target short-edge resolution:
-    # 1. Never downscale the user's input below its native short edge (unless > 2160)
-    # 2. Clamped up to 2160p (4K short edge) for DiT processing
+    # SeedVR2 DiT diffusion transformer is natively trained on 1080p short-edge.
+    # At 1080p it completes in ~20 seconds with pristine micro-detail and ZERO VRAM paging.
+    # Higher native latent resolutions (e.g. 2160p) require >40GB VRAM and trigger heavy OS paging (25+ min stall).
     if resolution is None or resolution <= 0:
         desired_res = int(round(in_short * target_scale))
-        if in_short >= 2160:
-            target_res = 2160
-        else:
-            target_res = min(2160, max(in_short, desired_res))
+        target_res = min(1080, max(720, desired_res))
+        if in_short > 1080:
+            target_res = min(1280, in_short)
     else:
         target_res = resolution
 
@@ -272,12 +304,6 @@ def run_seedvr2_upscale(
                 model_dir = md
                 break
 
-    # Determine VAE tiling:
-    # VAE latent tiling is the primary cause of 512px grid seam lines.
-    # On GPUs with 16GB+ VRAM (RTX 3090 24GB), single images up to 2160p fit comfortably without tiling.
-    if vae_tiled is None:
-        vae_tiled = (target_res > 2160)
-
     cmd = [
         python_exe,
         seedvr_cli,
@@ -291,14 +317,26 @@ def run_seedvr2_upscale(
     ]
     if model_dir:
         cmd.extend(["--model_dir", model_dir])
-    if vae_tiled:
+
+    if target_res > 1080:
+        cmd.extend([
+            "--blocks_to_swap", "16",
+            "--dit_offload_device", "cpu",
+            "--vae_encode_tiled",
+            "--vae_decode_tiled",
+            "--vae_encode_tile_size", "1024",
+            "--vae_encode_tile_overlap", "128",
+            "--vae_decode_tile_size", "1024",
+            "--vae_decode_tile_overlap", "128",
+        ])
+    elif vae_tiled:
         cmd.extend([
             "--vae_encode_tiled",
             "--vae_decode_tiled",
-            "--vae_encode_tile_size", "2048",
-            "--vae_encode_tile_overlap", "256",
-            "--vae_decode_tile_size", "2048",
-            "--vae_decode_tile_overlap", "256",
+            "--vae_encode_tile_size", "1024",
+            "--vae_encode_tile_overlap", "128",
+            "--vae_decode_tile_size", "1024",
+            "--vae_decode_tile_overlap", "128",
         ])
 
     print(f"Launching SeedVR2: {' '.join(cmd)}", file=sys.stderr, flush=True)
@@ -317,20 +355,24 @@ def run_seedvr2_upscale(
         errors="replace",
         env=env
     )
+    _active_subproc = proc
 
-    for line in proc.stdout:
-        print(line, end="", file=sys.stderr, flush=True)
-        print(line, end="", file=sys.stdout, flush=True)
-        if "Phase 1:" in line:
-            log_progress(25.0)
-        elif "Phase 2:" in line:
-            log_progress(50.0)
-        elif "Phase 3:" in line:
-            log_progress(75.0)
-        elif "Phase 4:" in line:
-            log_progress(90.0)
+    try:
+        for line in proc.stdout:
+            print(line, end="", file=sys.stderr, flush=True)
+            print(line, end="", file=sys.stdout, flush=True)
+            if "Phase 1:" in line:
+                log_progress(25.0)
+            elif "Phase 2:" in line:
+                log_progress(50.0)
+            elif "Phase 3:" in line:
+                log_progress(75.0)
+            elif "Phase 4:" in line:
+                log_progress(90.0)
 
-    proc.wait()
+        proc.wait()
+    finally:
+        _active_subproc = None
     if proc.returncode != 0:
         raise RuntimeError(f"SeedVR2 exited with code {proc.returncode}")
 

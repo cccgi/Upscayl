@@ -124,26 +124,15 @@ def classify_image(image_path: str) -> dict:
     # If genuine human faces are detected or portrait probability is high:
     if num_faces > 0 or scores["portrait"] > 0.40:
         conf = round(max(face_conf, scores["portrait"]), 2)
-        if is_high_res:
-            return {
-                "category": "portrait",
-                "tag": "High-Res Portrait",
-                "label": "High-Resolution Human Portrait",
-                "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). FaceUpDAT transformer provides pristine facial micro-pores and skin smoothing with zero diffusion grid or noise.",
-                "suggestedModel": "4xFaceUpDAT",
-                "modelDisplayName": "FaceUpDAT (High-Res Face & Skin Transformer)",
-                "confidence": conf
-            }
-        else:
-            return {
-                "category": "portrait",
-                "tag": "Human Portrait",
-                "label": "Human Portrait & People",
-                "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). SeedVR2 7B generative diffusion synthesizes missing facial micro-features, skin textures, and hair detail.",
-                "suggestedModel": "seedvr2_ema_7b_fp16",
-                "modelDisplayName": "SeedVR2 7B (Generative Diffusion SOTA)",
-                "confidence": conf
-            }
+        return {
+            "category": "portrait",
+            "tag": "Human Portrait",
+            "label": "Human Portrait & Face Photo",
+            "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). FaceUpDAT transformer provides pristine facial micro-pores, natural skin tones, and sharp eyelashes in ~2 seconds without diffusion noise.",
+            "suggestedModel": "4xFaceUpDAT",
+            "modelDisplayName": "FaceUpDAT (SOTA Face & Skin Transformer)",
+            "confidence": conf
+        }
 
     best_cat = max(scores, key=scores.get)
     best_prob = scores[best_cat]

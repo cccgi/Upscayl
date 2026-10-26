@@ -71,9 +71,26 @@ app.on("ready", async () => {
   }
 });
 
-// Quit the app once all windows are closed
-app.on("window-all-closed", () => {
+// Clean up any running upscaling processes on exit
+const cleanupProcesses = async () => {
+  try {
+    await stop();
+  } catch (err) {
+    logit("⚠️ Cleanup on exit error:", err);
+  }
+};
+
+app.on("window-all-closed", async () => {
+  await cleanupProcesses();
   app.quit();
+});
+
+app.on("before-quit", async () => {
+  await cleanupProcesses();
+});
+
+app.on("will-quit", async () => {
+  await cleanupProcesses();
 });
 
 // ! ENABLE THIS FOR MACOS APP STORE BUILD

@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import UpscaylSVGLogo from "@/components/icons/upscayl-logo-svg";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { translationAtom } from "@/atoms/translations-atom";
 import {
+  progressAtom,
   progressInfoAtom,
   selectedModelIdAtom,
 } from "@/atoms/user-settings-atom";
@@ -50,6 +51,8 @@ function ProgressBar({
   const progressInfo = useAtomValue(progressInfoAtom);
   const selectedModelId = useAtomValue(selectedModelIdAtom);
 
+  const setProgress = useSetAtom(progressAtom);
+
   // Live stopwatch timer
   useEffect(() => {
     setElapsedSeconds(0);
@@ -73,8 +76,24 @@ function ProgressBar({
     }
   }, [progress]);
 
+  // Listen for backend process termination
+  useEffect(() => {
+    const onStopped = () => {
+      setProgress("");
+      resetImagePaths();
+    };
+    if (typeof window !== "undefined" && (window as any).electron?.on) {
+      (window as any).electron.on("upscayl-stopped", onStopped);
+      return () => {
+        (window as any).electron.off?.("upscayl-stopped", onStopped);
+      };
+    }
+  }, [setProgress, resetImagePaths]);
+
   const stopHandler = () => {
     window.electron.send(ELECTRON_COMMANDS.STOP);
+    setProgress("");
+    resetImagePaths();
     logit("🛑 Stopping Upscayl");
   };
 
