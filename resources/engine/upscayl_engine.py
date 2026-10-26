@@ -384,6 +384,7 @@ def main():
     parser.add_argument("--resolution", default=None, help="Target resolution for SeedVR2 (default: auto)")
     parser.add_argument("--color_correction", default="lab", help="Color correction for SeedVR2")
     parser.add_argument("--model_mapping", default=None, help="JSON file mapping filenames to specific models")
+    parser.add_argument("--selected_files", default=None, help="JSON file containing array of selected filenames to include in batch")
 
     args = parser.parse_args()
 
@@ -415,6 +416,17 @@ def main():
         except Exception as e:
             print(f"Warning: Failed to parse model_mapping file: {e}", file=sys.stderr, flush=True)
 
+    # Load selected files list if provided
+    selected_files_set = None
+    if args.selected_files and os.path.isfile(args.selected_files):
+        try:
+            with open(args.selected_files, "r", encoding="utf-8") as f:
+                raw_selected = json.load(f)
+                selected_files_set = set(raw_selected)
+            print(f"Filtering batch to {len(selected_files_set)} selected images.", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"Warning: Failed to parse selected_files file: {e}", file=sys.stderr, flush=True)
+
     # Determine if input is a single file or a folder
     if os.path.isfile(args.input):
         inputs = [(args.input, args.output)]
@@ -422,6 +434,13 @@ def main():
         os.makedirs(args.output, exist_ok=True)
         valid_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
         files = [f for f in os.listdir(args.input) if Path(f).suffix.lower() in valid_exts]
+        if selected_files_set is not None:
+            files = [
+                f for f in files
+                if f in selected_files_set
+                or os.path.join(args.input, f) in selected_files_set
+                or Path(f).name in selected_files_set
+            ]
         inputs = [
             (
                 os.path.join(args.input, f),
@@ -433,6 +452,10 @@ def main():
         raise FileNotFoundError(f"Input path does not exist: {args.input}")
 
     total_images = len(inputs)
+    if total_images == 0:
+        print("No images selected or found to process.", file=sys.stderr, flush=True)
+        log_progress(100.0)
+        return
     spandrel_model_cache = {}  # Cache loaded models on GPU to avoid reloading weights repeatedly
 
     for idx, (in_file, out_file) in enumerate(inputs):

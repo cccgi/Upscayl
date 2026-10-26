@@ -16,8 +16,14 @@ export const spawnUpscayl = (
     modelName.toLowerCase().includes("seedvr") ||
     modelName.toLowerCase().includes("seed");
 
+  const hasModelMapping = filteredCommand.includes("--model_mapping");
+  const hasSelectedFiles = filteredCommand.includes("--selected_files");
+
   const isPyTorchOrModern =
     isSeedVR ||
+    modelName.toLowerCase() === "auto" ||
+    hasModelMapping ||
+    hasSelectedFiles ||
     modelName.endsWith(".pth") ||
     modelName.endsWith(".safetensors") ||
     modelName.endsWith(".pt") ||
@@ -48,8 +54,5 @@ export const spawnUpscayl = (
     });
   }
 
-  return {
-    process: spawnedProcess,
-    kill: () => spawnedProcess.kill(),
-  };
+  return spawnedProcess;
 };

@@ -28,6 +28,7 @@ import LensViewer from "./lens-view";
 import ImageViewer from "./image-viewer";
 import useTranslation from "../hooks/use-translation";
 import SliderView from "./slider-view";
+import BatchGalleryView from "./batch-gallery-view";
 import { CheckCircle2, Folder, Layers, Sparkles } from "lucide-react";
 
 type MainContentProps = {
@@ -317,11 +318,14 @@ const MainContent = ({
           />
         )}
 
-      {/* BATCH UPSCALE SHOW SELECTED FOLDER OVERVIEW */}
+      {/* BATCH UPSCALE GALLERY VIEW OR FOLDER SCAN OVERVIEW */}
       {batchMode &&
         progress.length === 0 &&
         upscaledBatchFolderPath.length === 0 &&
-        batchFolderPath.length > 0 && (
+        batchFolderPath.length > 0 &&
+        (!batchScanning && batchReport && batchReport.items && batchReport.items.length > 0 ? (
+          <BatchGalleryView />
+        ) : (
           <div className="z-20 flex flex-col items-center justify-center p-8 max-w-lg w-full">
             <div className="w-full rounded-2xl border border-base-300 bg-base-100/90 backdrop-blur-md p-6 shadow-2xl flex flex-col items-center text-center gap-4 animate-step-in">
               <div className="rounded-2xl bg-primary/10 p-4 text-primary">
@@ -344,54 +348,13 @@ const MainContent = ({
                 </div>
               )}
 
-              {!batchScanning && batchReport && (
-                <div className="w-full space-y-3 pt-1">
-                  <div className="flex items-center justify-center gap-2">
-                    {batchReport.isMixed ? (
-                      <span className="badge badge-warning gap-1.5 font-semibold text-xs py-3 px-3">
-                        <Layers className="h-3.5 w-3.5" />
-                        Mixed Content Detected ({batchReport.totalImages} images)
-                      </span>
-                    ) : (
-                      <span className="badge badge-success gap-1.5 font-semibold text-xs py-3 px-3">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Uniform {batchReport.dominantCategory} ({batchReport.totalImages} images)
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
-                    {Object.entries(batchReport.categoryCounts).map(([cat, count]) => (
-                      <span
-                        key={cat}
-                        className="badge badge-neutral badge-sm text-[11px] py-2 px-2.5 capitalize"
-                      >
-                        {cat === "portrait" && "👤 "}
-                        {cat === "anime" && "🎨 "}
-                        {cat === "photo" && "📷 "}
-                        {cat === "graphic" && "💻 "}
-                        {count} {cat}
-                      </span>
-                    ))}
-                  </div>
-
-                  {batchReport.isMixed && (
-                    <p className="text-xs text-base-content/70">
-                      {useAdaptiveBatch
-                        ? "✨ Adaptive Smart Upscaling is active. Each image will use its optimal model."
-                        : "Single-model mode selected. Step 2 model will be used for all files."}
-                    </p>
-                  )}
-                </div>
-              )}
-
               <div className="pt-2 text-xs text-base-content/50">
                 Configure options in the sidebar and click{" "}
                 <span className="text-secondary font-bold">Upscayl</span> to begin.
               </div>
             </div>
           </div>
-        )}
+        ))}
 
       {/* BATCH UPSCALE DONE INFO */}
       {batchMode && upscaledBatchFolderPath.length > 0 && (

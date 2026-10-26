@@ -16,6 +16,7 @@ import {
   batchScanningAtom,
   useAdaptiveBatchAtom,
   batchModelMappingAtom,
+  batchSelectedFilesAtom,
 } from "../../../atoms/user-settings-atom";
 import { FEATURE_FLAGS } from "@common/feature-flags";
 import { ELECTRON_COMMANDS } from "@common/electron-commands";
@@ -79,6 +80,7 @@ function UpscaylSteps({
   const [batchScanning, setBatchScanning] = useAtom(batchScanningAtom);
   const [useAdaptiveBatch, setUseAdaptiveBatch] = useAtom(useAdaptiveBatchAtom);
   const [, setBatchModelMapping] = useAtom(batchModelMappingAtom);
+  const [batchSelectedFiles, setBatchSelectedFiles] = useAtom(batchSelectedFilesAtom);
 
   const rememberOutputFolder = useAtomValue(rememberOutputFolderAtom);
   const customWidth = useAtomValue(customWidthAtom);
@@ -145,6 +147,7 @@ function UpscaylSteps({
       if (!batchMode) {
         setBatchReport(null);
         setBatchScanning(false);
+        setBatchSelectedFiles([]);
         lastAnalyzedBatchFolderRef.current = "";
       }
       return;
@@ -166,10 +169,14 @@ function UpscaylSteps({
 
         if (report && report.items && report.items.length > 0) {
           const mapping: Record<string, string> = {};
+          const allFilenames: string[] = [];
           for (const item of report.items) {
             mapping[item.filename] = item.suggestedModel;
+            allFilenames.push(item.filename);
           }
           setBatchModelMapping(mapping);
+          // Default all images to selected
+          setBatchSelectedFiles(allFilenames);
 
           if (report.isMixed) {
             setUseAdaptiveBatch(true);
@@ -196,6 +203,7 @@ function UpscaylSteps({
     setBatchReport,
     setBatchScanning,
     setBatchModelMapping,
+    setBatchSelectedFiles,
     setUseAdaptiveBatch,
     setSelectedModelId,
   ]);
@@ -573,6 +581,8 @@ function UpscaylSteps({
         >
           {progress.length > 0
             ? t("APP.SCALE_SELECTION.IN_PROGRESS_BUTTON_TITLE")
+            : batchMode && batchSelectedFiles.length > 0
+            ? `${t("APP.SCALE_SELECTION.START_BUTTON_TITLE")} (${batchSelectedFiles.length})`
             : t("APP.SCALE_SELECTION.START_BUTTON_TITLE")}
         </button>
       </div>

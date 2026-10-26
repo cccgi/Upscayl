@@ -66,6 +66,7 @@ export type BatchUpscaylPayload = {
   outputPath: string;
   model: string;
   modelMapping?: Record<string, string>;
+  selectedFiles?: string[];
   gpuId: string;
   saveImageAs: ImageFormat;
   scale: string;

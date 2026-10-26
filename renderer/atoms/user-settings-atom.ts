@@ -33,6 +33,7 @@ export const batchReportAtom = atom(null as BatchAnalysisReport | null);
 export const batchScanningAtom = atom<boolean>(false);
 export const useAdaptiveBatchAtom = atomWithStorage<boolean>("useAdaptiveBatch", true);
 export const batchModelMappingAtom = atom({} as Record<string, string>);
+export const batchSelectedFilesAtom = atom<string[]>([]);
 
 /**
  * The path to the last folder the user saved an image to.

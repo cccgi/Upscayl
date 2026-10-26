@@ -188,6 +188,7 @@ export const getBatchArguments = ({
   modelsPath,
   model,
   modelMappingPath,
+  selectedFilesPath,
   gpuId,
   saveImageAs,
   scale,
@@ -201,6 +202,7 @@ export const getBatchArguments = ({
   modelsPath: string;
   model: string;
   modelMappingPath?: string;
+  selectedFilesPath?: string;
   gpuId: string;
   saveImageAs: ImageFormat;
   scale: string;
@@ -231,6 +233,9 @@ export const getBatchArguments = ({
     // MODEL MAPPING
     modelMappingPath ? "--model_mapping" : "",
     modelMappingPath ? modelMappingPath : "",
+    // SELECTED FILES
+    selectedFilesPath ? "--selected_files" : "",
+    selectedFilesPath ? selectedFilesPath : "",
     // GPU ID
     gpuId ? `-g` : "",
     gpuId ? gpuId : "",

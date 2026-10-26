@@ -23,6 +23,7 @@ import {
   copyMetadataAtom,
   useAdaptiveBatchAtom,
   batchModelMappingAtom,
+  batchSelectedFilesAtom,
 } from "../../atoms/user-settings-atom";
 import useLogger from "../hooks/use-logger";
 import {
@@ -99,12 +100,21 @@ const Sidebar = ({
   const [copyMetadata] = useAtom(copyMetadataAtom);
   const useAdaptiveBatch = useAtomValue(useAdaptiveBatchAtom);
   const batchModelMapping = useAtomValue(batchModelMappingAtom);
+  const batchSelectedFiles = useAtomValue(batchSelectedFilesAtom);
 
   const upscaylHandler = async () => {
     logit("🔄 Resetting Upscaled Image Path");
     setUpscaledImagePath("");
     setUpscaledBatchFolderPath("");
     if (imagePath !== "" || batchFolderPath !== "") {
+      if (batchMode && batchSelectedFiles.length === 0) {
+        toast({
+          title: "No Images Selected",
+          description: "Please select at least one image in the gallery to upscale.",
+        });
+        return;
+      }
+
       setProgress(t("APP.PROGRESS.WAIT_TITLE"));
       // Double Upscayl
       if (doubleUpscayl) {
@@ -147,6 +157,7 @@ const Sidebar = ({
             outputPath,
             model: effectiveModel,
             modelMapping: effectiveMapping,
+            selectedFiles: batchSelectedFiles,
             gpuId: gpuId.length === 0 ? null : gpuId,
             saveImageAs,
             scale,

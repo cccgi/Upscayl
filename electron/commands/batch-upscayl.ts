@@ -66,6 +66,25 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
     }
   }
 
+  // Handle selected files filter
+  let selectedFilesPath = "";
+  if (payload.selectedFiles && payload.selectedFiles.length > 0) {
+    selectedFilesPath = path.join(outputFolderPath, ".selected_files.json");
+    try {
+      fs.writeFileSync(
+        selectedFilesPath,
+        JSON.stringify(payload.selectedFiles, null, 2),
+        "utf-8",
+      );
+      logit(
+        `✨ Filtered batch of ${payload.selectedFiles.length} files written to:`,
+        selectedFilesPath,
+      );
+    } catch (e) {
+      logit("⚠️ Failed to write selected_files file:", e);
+    }
+  }
+
   const isDefaultModel = model in MODELS;
 
   // UPSCALE
@@ -78,6 +97,7 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
         : (savedCustomModelsPath ?? modelsPath),
       model,
       modelMappingPath,
+      selectedFilesPath,
       gpuId,
       saveImageAs,
       scale,
