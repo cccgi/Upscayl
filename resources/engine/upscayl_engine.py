@@ -143,41 +143,74 @@ def run_spandrel_upscale(
 
     log_progress(10.0)
 
-    # Tiled inference for large images
-    needs_tiling = (tile_size > 0) and (w > tile_size or h > tile_size)
+    # Detect if model is a Vision Transformer (DAT, HAT, SwinIR, Restormer, etc.)
+    arch_id = str(getattr(getattr(model_desc, "architecture", None), "id", "")).lower()
+    arch_name = str(getattr(getattr(model_desc, "architecture", None), "name", "")).lower()
+    model_cls = type(model_desc.model).__name__.lower()
+    path_lower = model_path.lower()
+    is_transformer = any(
+        k in arch_id or k in arch_name or k in model_cls or k in path_lower
+        for k in ["dat", "hat", "swin", "transformer", "attention", "vit", "restormer"]
+    )
+
+    # Tiling logic:
+    # Transformers have O(N^2) quadratic self-attention memory complexity.
+    # On a 1024x1024 tile, DAT in FP32 requires ~23 GB VRAM, exhausting physical GPU memory and triggering PCIe host paging.
+    # Clamping tile size to 512 for transformers reduces peak VRAM to ~3.3 GB and processes each tile in ~4 seconds.
+    effective_tile_size = tile_size
+    if is_transformer:
+        if effective_tile_size <= 0 or effective_tile_size > 512:
+            effective_tile_size = 512
+        needs_tiling = (w > effective_tile_size or h > effective_tile_size)
+    else:
+        needs_tiling = (effective_tile_size > 0) and (w > effective_tile_size or h > effective_tile_size)
+
+    effective_tile_overlap = min(tile_overlap, effective_tile_size // 4)
+
+    # Setup autocast for Tensor Core acceleration and lower peak memory
+    use_autocast = torch.cuda.is_available() and device_obj.type == "cuda"
+    autocast_dtype = torch.bfloat16 if (use_autocast and torch.cuda.is_bf16_supported()) else torch.float16
 
     if not needs_tiling:
         tensor = TF.to_tensor(img).unsqueeze(0).to(device_obj, dtype=dtype)
         with torch.inference_mode():
-            out_tensor = model(tensor)
+            if use_autocast:
+                with torch.autocast(device_type="cuda", dtype=autocast_dtype):
+                    out_tensor = model(tensor)
+            else:
+                out_tensor = model(tensor)
         out_tensor = out_tensor.squeeze(0).clamp(0, 1).float().cpu()
         out_img = TF.to_pil_image(out_tensor)
         log_progress(80.0)
     else:
         # Perform tiled processing with Hann-cosine feathered blending to eliminate tile borders
-        print(f"Performing tiled inference (tile_size={tile_size}, overlap={tile_overlap})", file=sys.stderr, flush=True)
+        print(f"Performing tiled inference (tile_size={effective_tile_size}, overlap={effective_tile_overlap})", file=sys.stderr, flush=True)
         out_w = w * native_scale
         out_h = h * native_scale
         out_canvas = torch.zeros((3, out_h, out_w), dtype=torch.float32)
         weight_canvas = torch.zeros((1, out_h, out_w), dtype=torch.float32)
 
-        stride = tile_size - tile_overlap
-        x_steps = math.ceil((w - tile_size) / stride) + 1 if w > tile_size else 1
-        y_steps = math.ceil((h - tile_size) / stride) + 1 if h > tile_size else 1
+        stride = effective_tile_size - effective_tile_overlap
+        x_steps = math.ceil((w - effective_tile_size) / stride) + 1 if w > effective_tile_size else 1
+        y_steps = math.ceil((h - effective_tile_size) / stride) + 1 if h > effective_tile_size else 1
         total_tiles = x_steps * y_steps
         current_tile = 0
 
         for yi in range(y_steps):
-            y1 = min(yi * stride, max(0, h - tile_size))
-            y2 = min(y1 + tile_size, h)
+            y1 = min(yi * stride, max(0, h - effective_tile_size))
+            y2 = min(y1 + effective_tile_size, h)
             for xi in range(x_steps):
-                x1 = min(xi * stride, max(0, w - tile_size))
-                x2 = min(x1 + tile_size, w)
+                x1 = min(xi * stride, max(0, w - effective_tile_size))
+                x2 = min(x1 + effective_tile_size, w)
 
                 tile = img.crop((x1, y1, x2, y2))
                 tile_tensor = TF.to_tensor(tile).unsqueeze(0).to(device_obj, dtype=dtype)
                 with torch.inference_mode():
-                    out_tile = model(tile_tensor).squeeze(0).float().cpu()
+                    if use_autocast:
+                        with torch.autocast(device_type="cuda", dtype=autocast_dtype):
+                            out_tile = model(tile_tensor).squeeze(0).float().cpu()
+                    else:
+                        out_tile = model(tile_tensor).squeeze(0).float().cpu()
 
                 # Destination coordinates
                 dx1, dy1 = x1 * native_scale, y1 * native_scale
@@ -186,7 +219,7 @@ def run_spandrel_upscale(
                 # Cosine-feathered blending mask
                 th, tw = out_tile.shape[1], out_tile.shape[2]
                 mask = torch.ones((1, th, tw), dtype=torch.float32)
-                feather = tile_overlap * native_scale
+                feather = min(effective_tile_overlap * native_scale, tw // 2, th // 2)
                 if feather > 0:
                     # Hann window ramp: 0.5 * (1 - cos(pi * t))
                     ramp = 0.5 - 0.5 * torch.cos(torch.linspace(0, math.pi, feather))
@@ -209,6 +242,9 @@ def run_spandrel_upscale(
 
         out_canvas = out_canvas / weight_canvas.clamp(min=1e-5)
         out_img = TF.to_pil_image(out_canvas.clamp(0, 1))
+        del out_canvas, weight_canvas
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     # Handle resizing if target scale or custom width differ
     if custom_width and custom_width > 0:
@@ -554,6 +590,14 @@ def main():
         # Report batch progress
         batch_pct = ((idx + 1) / total_images) * 100.0
         log_progress(batch_pct)
+
+        # Clear PyTorch caching allocator between batch items to prevent VRAM fragmentation
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
     log_progress(100.0)
 
