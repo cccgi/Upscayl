@@ -73,8 +73,7 @@ const Home = () => {
   };
 
   const selectFolderHandler = async () => {
-    resetImagePaths();
-    const result = await window.electron.invoke(ELECTRON_COMMANDS.SELECT_FOLDER, { mode: "batchInput" });
+    const result = await window.electron.invoke(ELECTRON_COMMANDS.SELECT_FOLDER);
     if (result !== null) {
       const folderPath = typeof result === "string" ? result : result?.folder;
       logit("🖼 Selected Folder Path: ", folderPath);
@@ -87,10 +86,6 @@ const Home = () => {
       }
     } else {
       logit("🚫 Folder selection cancelled");
-      setBatchFolderPath("");
-      if (!rememberOutputFolder) {
-        setOutputPath("");
-      }
     }
   };
 

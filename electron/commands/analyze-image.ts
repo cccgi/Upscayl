@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from "child_process";
+import { killProcessTree } from "./stop";
 import { pythonPath, classifierScriptPath } from "../utils/get-resource-paths";
 import logit from "../utils/logit";
 import fs from "fs";
@@ -107,6 +108,19 @@ function startDaemon() {
     });
   } catch (err) {
     logit("🚨 Failed to spawn classifier daemon:", err);
+    daemonProcess = null;
+  }
+}
+
+export function stopClassifierDaemon() {
+  if (daemonProcess) {
+    try {
+      const pid = daemonProcess.pid;
+      if (pid) {
+        killProcessTree(pid);
+      }
+      daemonProcess.kill("SIGKILL");
+    } catch (_) {}
     daemonProcess = null;
   }
 }
@@ -241,30 +255,46 @@ export async function analyzeBatchFolder(
     const modelCounts: Record<string, number> = {};
     const categoryCounts: Record<string, number> = {};
 
-    // Run rapid batch classification through the daemon
-    for (const f of files) {
-      const fullPath = path.join(folderPath, f);
-      try {
-        const res = await analyzeImageFile(fullPath);
-        items.push({
-          path: fullPath,
-          filename: f,
-          category: res.category,
-          label: res.label,
-          tag: res.tag,
-          suggestedModel: res.suggestedModel,
-          modelDisplayName: res.modelDisplayName,
-          confidence: res.confidence,
-          reason: res.reason,
-        });
+    // Run parallel batch classification through the daemon
+    const results = await Promise.all(
+      files.map(async (f) => {
+        const fullPath = path.join(folderPath, f);
+        try {
+          const res = await analyzeImageFile(fullPath);
+          return {
+            path: fullPath,
+            filename: f,
+            category: res.category,
+            label: res.label,
+            tag: res.tag,
+            suggestedModel: res.suggestedModel,
+            modelDisplayName: res.modelDisplayName,
+            confidence: res.confidence,
+            reason: res.reason,
+          };
+        } catch (err) {
+          logit(`⚠️ Error analyzing batch file ${f}:`, err);
+          return {
+            path: fullPath,
+            filename: f,
+            category: "photo" as const,
+            label: "Photography / Real-World",
+            tag: "General Photo",
+            suggestedModel: "4xRealWebPhoto_v4_dat2",
+            modelDisplayName: "DAT-2 (RealWebPhoto v4)",
+            confidence: 0.85,
+            reason: "Default recommendation",
+          };
+        }
+      })
+    );
 
-        modelCounts[res.suggestedModel] =
-          (modelCounts[res.suggestedModel] || 0) + 1;
-        categoryCounts[res.category] =
-          (categoryCounts[res.category] || 0) + 1;
-      } catch (err) {
-        logit(`⚠️ Error analyzing batch file ${f}:`, err);
-      }
+    for (const item of results) {
+      items.push(item);
+      modelCounts[item.suggestedModel] =
+        (modelCounts[item.suggestedModel] || 0) + 1;
+      categoryCounts[item.category] =
+        (categoryCounts[item.category] || 0) + 1;
     }
 
     const sortedModels = Object.entries(modelCounts).sort(

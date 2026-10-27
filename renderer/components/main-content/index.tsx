@@ -324,43 +324,13 @@ const MainContent = ({
           />
         )}
 
-      {/* BATCH UPSCALE GALLERY VIEW OR FOLDER SCAN OVERVIEW */}
+      {/* BATCH UPSCALE GALLERY VIEW */}
       {batchMode &&
         progress.length === 0 &&
         upscaledBatchFolderPath.length === 0 &&
-        batchFolderPath.length > 0 &&
-        (!batchScanning && batchReport && batchReport.items && batchReport.items.length > 0 ? (
+        batchFolderPath.length > 0 && (
           <BatchGalleryView />
-        ) : (
-          <div className="z-20 flex flex-col items-center justify-center p-8 max-w-lg w-full">
-            <div className="w-full rounded-2xl border border-base-300 bg-base-100/90 backdrop-blur-md p-6 shadow-2xl flex flex-col items-center text-center gap-4 animate-step-in">
-              <div className="rounded-2xl bg-primary/10 p-4 text-primary">
-                <Folder className="h-10 w-10" />
-              </div>
-
-              <div className="space-y-1 max-w-full">
-                <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
-                  {t("APP.PROGRESS.BATCH.SELECTED_FOLDER_TITLE")}
-                </h3>
-                <p className="text-xs font-mono font-medium text-base-content break-all px-3 py-1.5 rounded-lg bg-base-200/80 border border-base-300">
-                  {batchFolderPath}
-                </p>
-              </div>
-
-              {batchScanning && (
-                <div className="flex items-center gap-2.5 py-2 px-4 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary animate-pulse">
-                  <span className="loading loading-spinner loading-xs"></span>
-                  <span>Scanning images with Vision AI...</span>
-                </div>
-              )}
-
-              <div className="pt-2 text-xs text-base-content/50">
-                Configure options in the sidebar and click{" "}
-                <span className="text-secondary font-bold">Upscayl</span> to begin.
-              </div>
-            </div>
-          </div>
-        ))}
+        )}
 
       {/* BATCH UPSCALE DONE INFO */}
       {batchMode && upscaledBatchFolderPath.length > 0 && (

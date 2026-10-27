@@ -88,7 +88,27 @@ export default function BatchGalleryView() {
   }, [report, activeCategoryFilter]);
 
   if (!report || report.items.length === 0) {
-    return null;
+    return (
+      <div className="z-20 flex flex-col items-center justify-center p-8 max-w-lg w-full">
+        <div className="w-full rounded-2xl border border-base-300 bg-base-100/90 backdrop-blur-md p-6 shadow-2xl flex flex-col items-center text-center gap-4 animate-step-in">
+          <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+            <Folder className="h-10 w-10 animate-pulse" />
+          </div>
+          <div className="space-y-1 max-w-full">
+            <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
+              Selected Batch Folder
+            </h3>
+            <p className="text-xs font-mono font-medium text-base-content break-all px-3 py-1.5 rounded-lg bg-base-200/80 border border-base-300">
+              {report?.folderPath || "Scanning folder contents..."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5 py-2 px-4 rounded-full bg-primary/10 border border-primary/20 text-xs font-medium text-primary animate-pulse">
+            <span className="loading loading-spinner loading-xs"></span>
+            <span>Scanning images with Vision AI...</span>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const folderName = report.folderPath

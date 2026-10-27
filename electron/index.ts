@@ -71,13 +71,15 @@ app.on("ready", async () => {
   }
 });
 
-// Clean up any running upscaling processes on exit
+// Clean up any running upscaling processes and classifier daemons on exit
 const cleanupProcesses = async () => {
   try {
+    const { stopClassifierDaemon } = require("./commands/analyze-image");
+    stopClassifierDaemon();
+  } catch (_) {}
+  try {
     await stop();
-  } catch (err) {
-    logit("⚠️ Cleanup on exit error:", err);
-  }
+  } catch (_) {}
 };
 
 app.on("window-all-closed", async () => {
@@ -91,6 +93,7 @@ app.on("before-quit", async () => {
 
 app.on("will-quit", async () => {
   await cleanupProcesses();
+  process.exit(0);
 });
 
 // ! ENABLE THIS FOR MACOS APP STORE BUILD

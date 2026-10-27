@@ -47,7 +47,7 @@ def load_models():
     import clip
     from ultralytics import YOLO
 
-    _clip_device = "cuda" if torch.cuda.is_available() else "cpu"
+    _clip_device = "cpu"
     
     # Try finding YOLOv8 face model
     yolo_candidates = [
@@ -95,7 +95,7 @@ def classify_image(image_path: str) -> dict:
     face_conf = 0.0
     if _face_model is not None:
         try:
-            face_res = _face_model.predict(image_path, conf=0.45, verbose=False)
+            face_res = _face_model.predict(image_path, conf=0.45, device="cpu", verbose=False)
             boxes = face_res[0].boxes
             num_faces = len(boxes)
             if num_faces > 0:

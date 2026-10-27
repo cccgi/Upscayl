@@ -35,19 +35,22 @@ export const killProcessTree = (pid: number): Promise<void> => {
 };
 
 const stop = async (event?: any, payload?: any) => {
-  const mainWindow = getMainWindow();
-
   setStopped(true);
 
-  if (mainWindow) {
-    try {
+  try {
+    const mainWindow = getMainWindow();
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
       mainWindow.setProgressBar(-1);
       mainWindow.webContents.send(ELECTRON_COMMANDS.UPSCAYL_PROGRESS, "");
       mainWindow.webContents.send("upscayl-stopped");
-    } catch (e) {
-      logit("⚠️ Error resetting mainWindow progress on stop:", e);
     }
-  }
+  } catch (_) {}
+
+  // Stop background vision classifier daemon to immediately release system resources
+  try {
+    const { stopClassifierDaemon } = require("./analyze-image");
+    stopClassifierDaemon();
+  } catch (_) {}
 
   const procsToKill = [...childProcesses];
   childProcesses.length = 0;

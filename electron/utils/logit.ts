@@ -3,13 +3,21 @@ import { getMainWindow } from "../main-window";
 import { ELECTRON_COMMANDS } from "../../common/electron-commands";
 
 const logit = (...args: any) => {
-  const mainWindow = getMainWindow();
-  if (!mainWindow) return;
-  log.log(...args);
-  // if (process.env.NODE_ENV === "development") {
-  //   return;
-  // }
-  mainWindow.webContents.send(ELECTRON_COMMANDS.LOG, args.join(" "));
+  try {
+    log.log(...args);
+    const mainWindow = getMainWindow();
+    if (
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      !mainWindow.webContents ||
+      mainWindow.webContents.isDestroyed()
+    ) {
+      return;
+    }
+    mainWindow.webContents.send(ELECTRON_COMMANDS.LOG, args.join(" "));
+  } catch (_) {
+    // Window is closing or destroyed; ignore IPC send failures safely
+  }
 };
 
 export default logit;
