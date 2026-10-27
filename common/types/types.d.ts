@@ -10,6 +10,9 @@ export interface BatchAnalysisItem {
   modelDisplayName: string;
   confidence: number;
   reason: string;
+  width?: number;
+  height?: number;
+  resolution?: string;
 }
 
 export interface BatchAnalysisReport {

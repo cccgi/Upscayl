@@ -61,6 +61,8 @@ export interface ProgressInfo {
   totalPhases: number;
   detailMessage: string;
   startTime: number;
+  isThrashing?: boolean;
+  thrashingMessage?: string;
 }
 
 export const initialProgressInfo: ProgressInfo = {
@@ -71,6 +73,8 @@ export const initialProgressInfo: ProgressInfo = {
   totalPhases: 4,
   detailMessage: "Starting super-resolution engine...",
   startTime: 0,
+  isThrashing: false,
+  thrashingMessage: "",
 };
 
 export const progressInfoAtom = atom<ProgressInfo>(initialProgressInfo);

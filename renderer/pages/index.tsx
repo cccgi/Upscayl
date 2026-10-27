@@ -125,6 +125,16 @@ const Home = () => {
         setProgress(`${val.toFixed(1)}%`);
       }
 
+      // Thrashing detection
+      if (
+        trimmed.includes("THRASHING_WARNING") ||
+        trimmed.toLowerCase().includes("thrashing") ||
+        trimmed.toLowerCase().includes("paging active")
+      ) {
+        next.isThrashing = true;
+        next.thrashingMessage = "VRAM memory thrashing detected (PCIe paging active). Upscaling is significantly slower than normal.";
+      }
+
       // Phase identification
       if (
         trimmed.includes("Phase 1:") ||

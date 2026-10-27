@@ -13,6 +13,9 @@ export interface AnalysisResult {
   suggestedModel: string;
   modelDisplayName: string;
   confidence: number;
+  width?: number;
+  height?: number;
+  resolution?: string;
 }
 
 export interface BatchAnalysisItem {
@@ -25,6 +28,52 @@ export interface BatchAnalysisItem {
   modelDisplayName: string;
   confidence: number;
   reason: string;
+  width?: number;
+  height?: number;
+  resolution?: string;
+}
+
+export function getImageDimensionsFast(filePath: string): { width: number; height: number } | null {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const buffer = Buffer.alloc(4096);
+    fs.readSync(fd, buffer, 0, 4096, 0);
+    fs.closeSync(fd);
+
+    if (buffer.length >= 24 && buffer.toString("ascii", 12, 16) === "IHDR") {
+      return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+    }
+    if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+      let offset = 2;
+      while (offset < buffer.length - 8) {
+        if (buffer[offset] !== 0xff) { offset++; continue; }
+        const marker = buffer[offset + 1];
+        if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+          return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7) };
+        }
+        offset += 2 + buffer.readUInt16BE(offset + 2);
+      }
+    }
+    if (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+      if (buffer.toString("ascii", 12, 16) === "VP8X" && buffer.length >= 30) {
+        return { width: 1 + buffer.readUIntLE(24, 3), height: 1 + buffer.readUIntLE(27, 3) };
+      }
+      if (buffer.toString("ascii", 12, 16) === "VP8 " && buffer.length >= 30) {
+        return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+      }
+      if (buffer.toString("ascii", 12, 16) === "VP8L" && buffer.length >= 25) {
+        const b1 = buffer[21], b2 = buffer[22], b3 = buffer[23], b4 = buffer[24];
+        return {
+          width: 1 + (((b2 & 0x3f) << 8) | b1),
+          height: 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6)),
+        };
+      }
+    }
+    if (buffer.toString("ascii", 0, 2) === "BM" && buffer.length >= 26) {
+      return { width: Math.abs(buffer.readInt32LE(18)), height: Math.abs(buffer.readInt32LE(22)) };
+    }
+  } catch (_) {}
+  return null;
 }
 
 export interface BatchAnalysisReport {
@@ -259,6 +308,9 @@ export async function analyzeBatchFolder(
     const results = await Promise.all(
       files.map(async (f) => {
         const fullPath = path.join(folderPath, f);
+        const dims = getImageDimensionsFast(fullPath);
+        const resolution = dims ? `${dims.width} x ${dims.height}` : undefined;
+
         try {
           const res = await analyzeImageFile(fullPath);
           return {
@@ -271,6 +323,9 @@ export async function analyzeBatchFolder(
             modelDisplayName: res.modelDisplayName,
             confidence: res.confidence,
             reason: res.reason,
+            width: dims?.width || res.width,
+            height: dims?.height || res.height,
+            resolution: resolution || res.resolution,
           };
         } catch (err) {
           logit(`⚠️ Error analyzing batch file ${f}:`, err);
@@ -284,6 +339,9 @@ export async function analyzeBatchFolder(
             modelDisplayName: "DAT-2 (RealWebPhoto v4)",
             confidence: 0.85,
             reason: "Default recommendation",
+            width: dims?.width,
+            height: dims?.height,
+            resolution,
           };
         }
       })

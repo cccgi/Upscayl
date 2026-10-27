@@ -22,6 +22,7 @@ import {
   Activity,
   ArrowRight,
   FolderSync,
+  AlertTriangle,
 } from "lucide-react";
 
 interface ProgressBarProps {
@@ -99,6 +100,20 @@ function ProgressBar({
     logit("🛑 Stopping Upscayl");
   };
 
+  // Stall detection: If a step or tile takes >25s without progress, PCIe thrashing is active
+  const [stallSeconds, setStallSeconds] = useState(0);
+
+  useEffect(() => {
+    setStallSeconds(0);
+  }, [progress, progressInfo.percent]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStallSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Determine current display percentage
   const currentPct = useMemo(() => {
     if (progressInfo.percent > 0) return progressInfo.percent;
@@ -106,6 +121,13 @@ function ProgressBar({
     if (match) return parseFloat(match[1]);
     return 0;
   }, [progressInfo.percent, progress]);
+
+  const isThrashingActive = useMemo(() => {
+    return (
+      Boolean(progressInfo.isThrashing) ||
+      (stallSeconds >= 25 && currentPct > 0 && currentPct < 98)
+    );
+  }, [progressInfo.isThrashing, stallSeconds, currentPct]);
 
   // Overall batch progress (0% - 100%)
   const batchOverallPct = useMemo(() => {
@@ -190,6 +212,21 @@ function ProgressBar({
             </div>
           </div>
 
+          {/* LIVE VRAM THRASHING WARNING BADGE */}
+          {isThrashingActive && (
+            <div className="flex items-center gap-2.5 rounded-xl border border-warning/50 bg-warning/15 px-3.5 py-2.5 text-warning shadow-lg animate-pulse transition-all">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-warning" />
+              <div className="flex flex-col leading-tight">
+                <span className="text-xs font-bold uppercase tracking-wider text-warning">
+                  ⚠️ GPU VRAM Thrashing Active
+                </span>
+                <span className="text-[11px] text-warning/90 font-medium">
+                  GPU driver is paging VRAM across the PCIe bus. Upscaling is running significantly slower than normal.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* MAIN PERCENTAGE & STAGE DESCRIPTION */}
           <div className="flex items-end justify-between pt-1">
             <div className="flex flex-col max-w-[70%]">
@@ -200,8 +237,10 @@ function ProgressBar({
                   ? `${t("APP.PROGRESS_BAR.BATCH_UPSCAYL_IN_PROGRESS_TITLE")} ${batchProgress} files`
                   : progressInfo.phaseName || "Upscaling in Progress"}
               </span>
-              <span className="text-xs text-base-content/70 truncate">
-                {batchMode && batchCurrentProcessing
+              <span className={`text-xs truncate ${isThrashingActive ? "text-warning font-semibold" : "text-base-content/70"}`}>
+                {isThrashingActive
+                  ? "⚠️ Memory thrashing active: PCIe paging transfers slowing down inference..."
+                  : batchMode && batchCurrentProcessing
                   ? progressInfo.detailMessage || `Processing image with ${modelDisplay}`
                   : progressInfo.phaseDesc || "Computing deep transformer & diffusion super-resolution..."}
               </span>

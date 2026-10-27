@@ -30,6 +30,7 @@ export default function BatchGalleryView() {
   const useAdaptiveBatch = useAtomValue(useAdaptiveBatchAtom);
 
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>("all");
+  const [naturalDimensions, setNaturalDimensions] = useState<Record<string, string>>({});
 
   const totalCount = report?.items.length || 0;
   const selectedCount = selectedFiles.length;
@@ -259,6 +260,13 @@ export default function BatchGalleryView() {
                       loading="lazy"
                       draggable="false"
                       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        if (img.naturalWidth && img.naturalHeight && !item.resolution) {
+                          const res = `${img.naturalWidth} x ${img.naturalHeight}`;
+                          setNaturalDimensions((prev) => (prev[item.filename] === res ? prev : { ...prev, [item.filename]: res }));
+                        }
+                      }}
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = "none";
                       }}
@@ -283,6 +291,13 @@ export default function BatchGalleryView() {
                       <span className="capitalize">{item.tag || item.category}</span>
                     </div>
 
+                    {/* BOTTOM-RIGHT: RESOLUTION SIZE BADGE */}
+                    {(item.resolution || naturalDimensions[item.filename]) && (
+                      <div className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 rounded bg-black/75 px-1.5 py-0.5 backdrop-blur-md text-[10px] font-mono font-medium text-white/90 shadow-sm border border-white/10 pointer-events-none">
+                        <span>{item.resolution || naturalDimensions[item.filename]}</span>
+                      </div>
+                    )}
+
                     {/* SELECTION OVERLAY GLOW WHEN HOVERING UNCHECKED */}
                     {!isSelected && (
                       <div className="absolute inset-0 bg-base-content/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -302,7 +317,7 @@ export default function BatchGalleryView() {
                       {item.filename}
                     </p>
 
-                    <div className="flex items-center justify-between text-[10px] text-base-content/70">
+                    <div className="flex items-center justify-between text-[10px] text-base-content/70 gap-1">
                       <span
                         className="truncate font-mono text-primary font-semibold"
                         title={
@@ -313,8 +328,8 @@ export default function BatchGalleryView() {
                       >
                         {useAdaptiveBatch ? assignedModel : "Step 2 Model"}
                       </span>
-                      <span className="shrink-0 text-base-content/50 ml-1">
-                        {Math.round(item.confidence * 100)}%
+                      <span className="shrink-0 font-mono text-[9px] text-base-content/60 font-medium">
+                        {item.resolution || naturalDimensions[item.filename] || `${Math.round(item.confidence * 100)}%`}
                       </span>
                     </div>
                   </div>

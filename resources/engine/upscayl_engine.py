@@ -208,6 +208,7 @@ def run_spandrel_upscale(
                 x1 = min(xi * stride, max(0, w - effective_tile_size))
                 x2 = min(x1 + effective_tile_size, w)
 
+                t_tile_start = time.time()
                 tile = img.crop((x1, y1, x2, y2))
                 tile_tensor = TF.to_tensor(tile).unsqueeze(0).to(device_obj, dtype=dtype)
                 with torch.inference_mode():
@@ -216,6 +217,21 @@ def run_spandrel_upscale(
                             out_tile = model(tile_tensor).squeeze(0).float().cpu()
                     else:
                         out_tile = model(tile_tensor).squeeze(0).float().cpu()
+                tile_elapsed = time.time() - t_tile_start
+
+                # VRAM Thrashing Detection:
+                # If a single tile takes over 14s, or free VRAM is depleted,
+                # the WDDM driver is thrashing GPU allocations across the PCIe bus.
+                if tile_elapsed > 14.0:
+                    print(f"THRASHING_WARNING: VRAM memory thrashing detected (tile {current_tile + 1} took {tile_elapsed:.1f}s via PCIe host paging). Upscaling is significantly slower than normal.", file=sys.stdout, flush=True)
+                    print(f"THRASHING_WARNING: VRAM memory thrashing detected (tile {current_tile + 1} took {tile_elapsed:.1f}s via PCIe host paging). Upscaling is significantly slower than normal.", file=sys.stderr, flush=True)
+                elif torch.cuda.is_available() and device_obj.type == "cuda":
+                    try:
+                        free_b, total_b = torch.cuda.mem_get_info(device_obj)
+                        if free_b < 256 * 1024 * 1024:
+                            print(f"THRASHING_WARNING: Critical VRAM pressure ({free_b / (1024 * 1024):.0f}MB free). GPU memory paging active.", file=sys.stdout, flush=True)
+                    except Exception:
+                        pass
 
                 # Destination coordinates
                 dx1, dy1 = x1 * native_scale, y1 * native_scale
