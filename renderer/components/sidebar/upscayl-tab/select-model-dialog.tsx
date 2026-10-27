@@ -131,20 +131,27 @@ const SelectModelDialog = () => {
   const [zoomedModel, setZoomedModel] = useState<ModelId | null>(null);
   const [showLegacy, setShowLegacy] = useState(false);
 
-  // Fallback modern list if models list hasn't finished IPC sync yet
+  // Comprehensive list of SOTA models always accessible to the user
   const defaultSotaList = [
-    "seedvr2_ema_3b_fp16",
     "seedvr2_ema_7b_sharp_fp16",
+    "seedvr2_ema_7b_fp16",
+    "seedvr2_ema_3b_fp16",
+    "seedvr2_ema_3b_fp8_e4m3fn",
     "4xRealWebPhoto_v4_dat2",
     "4xFaceUpDAT",
+    "4xLexicaDAT2_otf",
     "4x-UltraSharp",
     "4x_foolhardy_Remacri",
+    "4x-AnimeSharp",
   ];
 
-  const activeModernModels =
-    customModelIds.length > 0
-      ? customModelIds.filter((id) => !(id in MODELS))
-      : defaultSotaList;
+  // Merge default SOTA models with any scanned custom models
+  const activeModernModels = Array.from(
+    new Set([
+      ...defaultSotaList,
+      ...customModelIds.filter((id) => !(id in MODELS)),
+    ])
+  );
 
   const handleModelSelect = (model: ModelId | string) => {
     setSelectedModelId(model);
@@ -182,16 +189,16 @@ const SelectModelDialog = () => {
             </div>
           </button>
         </DialogTrigger>
-        <DialogContent className="z-50 sm:max-w-xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="z-50 sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden p-6 gap-3">
+          <DialogHeader className="shrink-0 pb-1">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <Sparkles className="h-5 w-5 text-primary" />
               Select AI Upscale Model
             </DialogTitle>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 pr-4">
-            <div className="flex flex-col gap-4 py-2">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-3 -mr-2 space-y-4">
+            <div className="flex flex-col gap-4 py-1">
               {/* TOP SECTION: MODERN SOTA MODELS (SEEDVR2, DAT2, ULTRASHARP, ETC.) */}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 px-1">
@@ -303,7 +310,7 @@ const SelectModelDialog = () => {
                 )}
               </div>
             </div>
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
