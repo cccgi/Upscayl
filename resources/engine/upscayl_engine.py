@@ -487,7 +487,7 @@ def main():
     parser.add_argument("-g", "--gpu_id", default="0", help="GPU device ID")
     parser.add_argument("-x", "--tta", action="store_true", help="TTA mode")
     parser.add_argument("--resolution", default=None, help="Target resolution for SeedVR2 (default: auto)")
-    parser.add_argument("--color_correction", default="lab", help="Color correction for SeedVR2")
+    parser.add_argument("--color_correction", default="wavelet_adaptive", help="Color correction for SeedVR2 (default: wavelet_adaptive)")
     parser.add_argument("--model_mapping", default=None, help="JSON file mapping filenames to specific models")
     parser.add_argument("--selected_files", default=None, help="JSON file containing array of selected filenames to include in batch")
 

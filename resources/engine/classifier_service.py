@@ -93,6 +93,7 @@ def classify_image(image_path: str) -> dict:
     # 1. Face Detection with YOLOv8 (high precision)
     num_faces = 0
     face_conf = 0.0
+    max_face_width = 0.0
     if _face_model is not None:
         try:
             face_res = _face_model.predict(image_path, conf=0.45, device="cpu", verbose=False)
@@ -100,6 +101,11 @@ def classify_image(image_path: str) -> dict:
             num_faces = len(boxes)
             if num_faces > 0:
                 face_conf = float(boxes.conf[0].item())
+                for b in boxes:
+                    xyxy = b.xyxy[0].tolist()
+                    fw = abs(xyxy[2] - xyxy[0])
+                    if fw > max_face_width:
+                        max_face_width = fw
         except Exception as e:
             print(f"[Classifier] Face predict error: {e}", file=sys.stderr)
 
@@ -124,15 +130,29 @@ def classify_image(image_path: str) -> dict:
     # If genuine human faces are detected or portrait probability is high:
     if num_faces > 0 or scores["portrait"] > 0.40:
         conf = round(max(face_conf, scores["portrait"]), 2)
-        return {
-            "category": "portrait",
-            "tag": "Human Portrait",
-            "label": "Human Portrait & Face Photo",
-            "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). SeedVR2 generative diffusion DiT synthesizes photorealistic skin micro-pores, hair strands, iris details, and sharp eyelashes.",
-            "suggestedModel": "seedvr2_ema_7b_fp16",
-            "modelDisplayName": "SeedVR2 7B (Generative SOTA Portrait)",
-            "confidence": conf
-        }
+        total_pixels = width * height
+        is_close_up = (max_face_width >= 240 or (max_face_width * max_face_width) / max(1, total_pixels) > 0.035)
+        
+        if is_close_up or num_faces == 0:
+            return {
+                "category": "portrait",
+                "tag": "Close-Up Portrait",
+                "label": "Human Face & Close-Up Portrait",
+                "reason": f"Detected close-up portrait ({width}x{height}, face ~{max_face_width:.0f}px, {conf*100:.0f}% confidence). SeedVR2 7B-Sharp generative DiT synthesizes photorealistic skin micro-pores, eyelashes, and iris details.",
+                "suggestedModel": "seedvr2_ema_7b_sharp_fp16",
+                "modelDisplayName": "SeedVR2 7B-Sharp (SOTA Generative Portrait)",
+                "confidence": conf
+            }
+        else:
+            return {
+                "category": "photo",
+                "tag": "Full-Body / Fashion",
+                "label": "Full-Body Portrait & Fashion Photography",
+                "reason": f"Detected full-body shot with distant face ({max_face_width:.0f}px, {conf*100:.0f}% confidence). DAT-2 spatial transformer resolves crisp facial features, clothing weave, and jewelry without diffusion VAE blur.",
+                "suggestedModel": "4xRealWebPhoto_v4_dat2",
+                "modelDisplayName": "DAT-2 (RealWebPhoto v4)",
+                "confidence": conf
+            }
 
     best_cat = max(scores, key=scores.get)
     best_prob = scores[best_cat]
