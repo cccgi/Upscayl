@@ -44,10 +44,7 @@ export let stopped = false;
 /**
  * The child processes array to store the spawned upscayl processes.
  */
-export let childProcesses: {
-  process: ChildProcessWithoutNullStreams;
-  kill: () => boolean;
-}[] = [];
+export let childProcesses: any[] = [];
 
 /**
  * The turn off notifications variable, so that we can load this value on startup.
@@ -64,10 +61,7 @@ export function setStopped(value: boolean): void {
   logit("🛑 Updating Stopped: ", stopped);
 }
 
-export function setChildProcesses(value: {
-  process: ChildProcessWithoutNullStreams;
-  kill: () => boolean;
-}): void {
+export function setChildProcesses(value: any): void {
   childProcesses.push(value);
   logit(
     "👶 Updating Child Processes: ",

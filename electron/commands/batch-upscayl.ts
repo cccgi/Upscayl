@@ -115,24 +115,44 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
   let failed = false;
   let encounteredError = false;
 
+  const proc = (upscayl as any).process || upscayl;
+
   const onData = (data: any) => {
     if (!mainWindow) return;
-    data = data.toString();
+    const dataStr = data.toString();
+
+    // Check for structured batch current image protocol
+    const lines = dataStr.split("\n");
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine.includes("BATCH_CURRENT_IMAGE:")) {
+        const parts = trimmedLine.split("BATCH_CURRENT_IMAGE:")[1]?.trim().split("|");
+        if (parts && parts.length >= 3) {
+          mainWindow.webContents.send(ELECTRON_COMMANDS.BATCH_CURRENT_IMAGE, {
+            currentImagePath: parts[0],
+            currentIndex: parseInt(parts[1], 10),
+            totalImages: parseInt(parts[2], 10),
+          });
+        }
+      }
+    }
+
     mainWindow.webContents.send(
       ELECTRON_COMMANDS.FOLDER_UPSCAYL_PROGRESS,
-      data.toString(),
+      dataStr,
     );
     if (
-      (data as string).includes("Error") ||
-      (data as string).includes("failed")
+      dataStr.includes("Error") ||
+      dataStr.includes("failed")
     ) {
-      logit("❌ ", data);
+      logit("❌ ", dataStr);
       encounteredError = true;
-      onError(data);
-    } else if (data.includes("Resizing")) {
+      onError(dataStr);
+    } else if (dataStr.includes("Resizing")) {
       mainWindow.webContents.send(ELECTRON_COMMANDS.SCALING_AND_CONVERTING);
     }
   };
+
   const onError = (data: any) => {
     if (!mainWindow) return;
     mainWindow.setProgressBar(-1);
@@ -149,6 +169,7 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
       );
     return;
   };
+
   const onClose = async () => {
     if (!mainWindow) return;
     if (!failed && !stopped) {
@@ -194,10 +215,11 @@ const batchUpscayl = async (event, payload: BatchUpscaylPayload) => {
       upscayl.kill();
     }
   };
-  upscayl.process.stderr?.on("data", onData);
-  upscayl.process.stdout?.on("data", onData);
-  upscayl.process.on("error", onError);
-  upscayl.process.on("close", onClose);
+
+  proc.stderr?.on("data", onData);
+  proc.stdout?.on("data", onData);
+  proc.on("error", onError);
+  proc.on("close", onClose);
 };
 
 export default batchUpscayl;

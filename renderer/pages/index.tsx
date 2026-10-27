@@ -11,6 +11,8 @@ import {
   initialProgressInfo,
   rememberOutputFolderAtom,
   userStatsAtom,
+  batchCurrentProcessingAtom,
+  batchSelectedFilesAtom,
 } from "../atoms/user-settings-atom";
 import useLogger from "../components/hooks/use-logger";
 import { useToast } from "@/components/ui/use-toast";
@@ -48,6 +50,8 @@ const Home = () => {
   const [upscaledBatchFolderPath, setUpscaledBatchFolderPath] = useState("");
   const setProgress = useSetAtom(progressAtom);
   const setProgressInfo = useSetAtom(progressInfoAtom);
+  const setBatchCurrentProcessing = useSetAtom(batchCurrentProcessingAtom);
+  const setBatchSelectedFiles = useSetAtom(batchSelectedFilesAtom);
   const [doubleUpscaylCounter, setDoubleUpscaylCounter] = useState(0);
   const setModelIds = useSetAtom(customModelIdsAtom);
   const setUserStats = useSetAtom(userStatsAtom);
@@ -70,12 +74,16 @@ const Home = () => {
 
   const selectFolderHandler = async () => {
     resetImagePaths();
-    const path = await window.electron.invoke(ELECTRON_COMMANDS.SELECT_FOLDER);
-    if (path !== null) {
-      logit("🖼 Selected Folder Path: ", path);
-      setBatchFolderPath(path);
+    const result = await window.electron.invoke(ELECTRON_COMMANDS.SELECT_FOLDER, { mode: "batchInput" });
+    if (result !== null) {
+      const folderPath = typeof result === "string" ? result : result?.folder;
+      logit("🖼 Selected Folder Path: ", folderPath);
+      setBatchFolderPath(folderPath);
       if (!rememberOutputFolder) {
-        setOutputPath(path);
+        setOutputPath(folderPath);
+      }
+      if (typeof result === "object" && result?.selectedFiles && result.selectedFiles.length > 1) {
+        setBatchSelectedFiles(result.selectedFiles);
       }
     } else {
       logit("🚫 Folder selection cancelled");
@@ -353,12 +361,35 @@ const Home = () => {
       logit(`💯 UPSCAYL_DONE: `, data);
     });
 
+    // BATCH CURRENT IMAGE
+    window.electron.on(
+      ELECTRON_COMMANDS.BATCH_CURRENT_IMAGE,
+      (
+        _,
+        payload: {
+          currentImagePath: string;
+          currentIndex: number;
+          totalImages: number;
+        },
+      ) => {
+        setBatchCurrentProcessing(payload);
+        if (payload?.currentImagePath) {
+          const filename = payload.currentImagePath.replace(/\\/g, "/").split("/").pop();
+          setProgressInfo((prev) => ({
+            ...prev,
+            detailMessage: `[${payload.currentIndex}/${payload.totalImages}] Processing ${filename}`,
+          }));
+        }
+      },
+    );
+
     // FOLDER UPSCAYL DONE
     window.electron.on(
       ELECTRON_COMMANDS.FOLDER_UPSCAYL_DONE,
       (_, data: string) => {
         setProgress("");
         setProgressInfo(initialProgressInfo);
+        setBatchCurrentProcessing(null);
         setUpscaledBatchFolderPath(data);
         logit(`💯 FOLDER_UPSCAYL_DONE: `, data);
         setUserStats((prev) => ({
@@ -422,6 +453,7 @@ const Home = () => {
     });
     setProgress("");
     setProgressInfo(initialProgressInfo);
+    setBatchCurrentProcessing(null);
     setImagePath("");
     setUpscaledImagePath("");
     setBatchFolderPath("");

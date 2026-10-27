@@ -35,6 +35,13 @@ export const useAdaptiveBatchAtom = atomWithStorage<boolean>("useAdaptiveBatch",
 export const batchModelMappingAtom = atom({} as Record<string, string>);
 export const batchSelectedFilesAtom = atom<string[]>([]);
 
+export interface BatchCurrentProcessing {
+  currentImagePath: string;
+  currentIndex: number;
+  totalImages: number;
+}
+export const batchCurrentProcessingAtom = atom(null as BatchCurrentProcessing | null);
+
 /**
  * The path to the last folder the user saved an image to.
  * Reset to "" if rememberOutputFolder is false.

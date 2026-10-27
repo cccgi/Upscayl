@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import { execPath, engineScriptPath, pythonPath } from "./get-resource-paths";
 import fs from "fs";
 
@@ -30,7 +30,7 @@ export const spawnUpscayl = (
     modelName.toLowerCase().includes("dat") ||
     !fs.existsSync(execPath);
 
-  let spawnedProcess;
+  let spawnedProcess: ChildProcess;
   if (isPyTorchOrModern && fs.existsSync(engineScriptPath)) {
     logit(`🚀 Spawning Modern Upscayl Engine with Python: ${pythonPath}`);
     spawnedProcess = spawn(
@@ -54,5 +54,8 @@ export const spawnUpscayl = (
     });
   }
 
-  return spawnedProcess;
+  // Ensure both direct access (proc.stdout) and wrapped access (proc.process.stdout) work seamlessly
+  (spawnedProcess as any).process = spawnedProcess;
+
+  return spawnedProcess as ChildProcess & { process: ChildProcess };
 };

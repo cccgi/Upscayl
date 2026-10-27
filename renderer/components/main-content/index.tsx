@@ -13,6 +13,7 @@ import {
   batchReportAtom,
   batchScanningAtom,
   useAdaptiveBatchAtom,
+  batchCurrentProcessingAtom,
 } from "../../atoms/user-settings-atom";
 import { useToast } from "@/components/ui/use-toast";
 import { sanitizePath } from "@common/sanitize-path";
@@ -74,6 +75,7 @@ const MainContent = ({
   const batchReport = useAtomValue(batchReportAtom);
   const batchScanning = useAtomValue(batchScanningAtom);
   const useAdaptiveBatch = useAtomValue(useAdaptiveBatchAtom);
+  const batchCurrentProcessing = useAtomValue(batchCurrentProcessingAtom);
 
   const viewType = useAtomValue(viewTypeAtom);
   const lensSize = useAtomValue(lensSizeAtom);
@@ -301,9 +303,13 @@ const MainContent = ({
         resetImagePaths={resetImagePaths}
       />
 
-      {/* SHOW SELECTED IMAGE (REMAINS VISIBLE & INTERACTIVE DURING UPSCALE) */}
-      {!batchMode && upscaledImagePath.length === 0 && imagePath.length > 0 && (
-        <ImageViewer imagePath={imagePath} setDimensions={setDimensions} />
+      {/* SHOW SELECTED IMAGE (SINGLE MODE) OR CURRENT IMAGE BEING UPSCALE IN BATCH */}
+      {((!batchMode && upscaledImagePath.length === 0 && imagePath.length > 0) ||
+        (batchMode && progress.length > 0 && batchCurrentProcessing?.currentImagePath)) && (
+        <ImageViewer
+          imagePath={batchMode ? batchCurrentProcessing!.currentImagePath : imagePath}
+          setDimensions={setDimensions}
+        />
       )}
 
       {/* UPSCALE IN PROGRESS OVERLAY & FLOATING HUD CARD */}

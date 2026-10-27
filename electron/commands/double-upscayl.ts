@@ -215,15 +215,17 @@ const doubleUpscayl = async (event, payload: DoubleUpscaylPayload) => {
       );
       logit("🚀 Upscaling Second Pass");
       childProcesses.push(upscayl2);
-      upscayl2.process.stderr.on("data", onData2);
-      upscayl2.process.on("error", onError2);
-      upscayl2.process.on("close", onClose2);
+      const proc2 = (upscayl2 as any).process || upscayl2;
+      proc2.stderr?.on("data", onData2);
+      proc2.on("error", onError2);
+      proc2.on("close", onClose2);
     }
   };
 
-  upscayl.process.stderr.on("data", onData);
-  upscayl.process.on("error", onError);
-  upscayl.process.on("close", onClose);
+  const proc1 = (upscayl as any).process || upscayl;
+  proc1.stderr?.on("data", onData);
+  proc1.on("error", onError);
+  proc1.on("close", onClose);
 };
 
 export default doubleUpscayl;

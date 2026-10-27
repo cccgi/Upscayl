@@ -1,13 +1,20 @@
 import { app, dialog } from "electron";
+import fs from "fs";
+import path from "path";
 import {
   savedBatchUpscaylFolderPath,
   setSavedBatchUpscaylFolderPath,
+  savedImagePath,
 } from "../utils/config-variables";
 import logit from "../utils/logit";
 import settings from "electron-settings";
 import { FEATURE_FLAGS } from "../../common/feature-flags";
 
-const selectFolder = async (event, message) => {
+interface SelectFolderOptions {
+  mode?: "batchInput" | "output";
+}
+
+const selectFolder = async (event, options?: SelectFolderOptions | string) => {
   let closeAccess;
   const folderBookmarks = await settings.get("folder-bookmarks");
   if (FEATURE_FLAGS.APP_STORE_BUILD && folderBookmarks) {
@@ -21,14 +28,52 @@ const selectFolder = async (event, message) => {
     }
   }
 
+  const isOutputMode = typeof options === "object" && options?.mode === "output";
+
+  // For batch upscale input, open a dialog that displays thumbnails and image files
+  // matching selectFile for consistency, while allowing the user to select the folder or images inside it.
+  const dialogProperties: Array<"openFile" | "openDirectory" | "multiSelections"> = isOutputMode
+    ? ["openDirectory"]
+    : ["openFile", "multiSelections"];
+
+  const dialogFilters = isOutputMode
+    ? undefined
+    : [
+        {
+          name: "Images in Folder (*.png, *.jpg, *.webp)",
+          extensions: [
+            "png",
+            "jpg",
+            "jpeg",
+            "jfif",
+            "webp",
+            "bmp",
+            "PNG",
+            "JPG",
+            "JPEG",
+            "JFIF",
+            "WEBP",
+            "BMP",
+          ],
+        },
+        { name: "All Files", extensions: ["*"] },
+      ];
+
+  const defaultDir = savedBatchUpscaylFolderPath || (savedImagePath ? path.dirname(savedImagePath) : undefined);
+
   const {
     canceled,
-    filePaths: folderPaths,
+    filePaths,
     bookmarks,
   } = await dialog.showOpenDialog({
-    properties: ["openDirectory"],
-    defaultPath: savedBatchUpscaylFolderPath,
+    properties: dialogProperties,
+    defaultPath: defaultDir,
     securityScopedBookmarks: true,
+    title: isOutputMode ? "Select Output Folder" : "Select Batch Folder (or choose images inside)",
+    message: isOutputMode
+      ? "Select output folder for upscaled images"
+      : "Select any image in the folder to choose that folder for batch upscale",
+    filters: dialogFilters,
   });
 
   if (FEATURE_FLAGS.APP_STORE_BUILD && bookmarks && bookmarks.length > 0) {
@@ -36,13 +81,20 @@ const selectFolder = async (event, message) => {
     await settings.set("folder-bookmarks", bookmarks[0]);
   }
 
-  if (canceled) {
+  if (canceled || !filePaths || filePaths.length === 0) {
     logit("🚫 Select Folder Operation Cancelled");
     return null;
   } else {
-    setSavedBatchUpscaylFolderPath(folderPaths[0]);
-    logit("📁 Selected Folder Path: ", savedBatchUpscaylFolderPath);
-    return folderPaths[0];
+    const chosenPath = filePaths[0];
+    const isDir = fs.existsSync(chosenPath) && fs.statSync(chosenPath).isDirectory();
+    const folder = isDir ? chosenPath : path.dirname(chosenPath);
+    setSavedBatchUpscaylFolderPath(folder);
+    logit("📁 Selected Folder Path: ", folder);
+
+    return {
+      folder,
+      selectedFiles: filePaths.map((f) => path.basename(f)),
+    };
   }
 };
 

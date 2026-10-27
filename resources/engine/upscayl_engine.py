@@ -116,6 +116,11 @@ def run_spandrel_upscale(
 
     device_obj = torch.device(device if torch.cuda.is_available() else "cpu")
 
+    if torch.cuda.is_available() and device_obj.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+
     if cached_model_tuple is not None:
         model, model_desc, dtype = cached_model_tuple
     else:
@@ -553,6 +558,9 @@ def main():
             except Exception:
                 assigned_model = "4xRealWebPhoto_v4_dat2"
 
+        # Emit structured protocol line for Electron frontend
+        print(f"BATCH_CURRENT_IMAGE:{in_file}|{idx+1}|{total_images}", file=sys.stdout, flush=True)
+        print(f"BATCH_CURRENT_IMAGE:{in_file}|{idx+1}|{total_images}", file=sys.stderr, flush=True)
         print(f"[{idx+1}/{total_images}] Processing {in_stem} with model '{assigned_model}'", file=sys.stdout, flush=True)
         print(f"[{idx+1}/{total_images}] Processing {in_file} -> {out_file}", file=sys.stderr, flush=True)
 
@@ -589,6 +597,8 @@ def main():
 
         # Report batch progress
         batch_pct = ((idx + 1) / total_images) * 100.0
+        print(f"BATCH_IMAGE_DONE:{out_file}|{idx+1}|{total_images}", file=sys.stdout, flush=True)
+        print("Successful", file=sys.stdout, flush=True)
         log_progress(batch_pct)
 
         # Clear PyTorch caching allocator between batch items to prevent VRAM fragmentation
