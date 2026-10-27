@@ -176,8 +176,10 @@ function UpscaylSteps({
             allFilenames.push(item.filename);
           }
           setBatchModelMapping(mapping);
-          // Default all images to selected
-          setBatchSelectedFiles(allFilenames);
+          // Default all original images to selected (excluding already-upscaled outputs)
+          const isAlreadyUpscaled = (fname: string) => /(_upscayl|_upscayled)/i.test(fname);
+          const defaultSelected = allFilenames.filter((fname) => !isAlreadyUpscaled(fname));
+          setBatchSelectedFiles(defaultSelected.length > 0 ? defaultSelected : allFilenames);
 
           if (report.isMixed) {
             setUseAdaptiveBatch(true);

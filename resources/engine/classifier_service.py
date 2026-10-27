@@ -128,9 +128,9 @@ def classify_image(image_path: str) -> dict:
             "category": "portrait",
             "tag": "Human Portrait",
             "label": "Human Portrait & Face Photo",
-            "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). FaceUpDAT transformer provides pristine facial micro-pores, natural skin tones, and sharp eyelashes in ~2 seconds without diffusion noise.",
-            "suggestedModel": "4xFaceUpDAT",
-            "modelDisplayName": "FaceUpDAT (SOTA Face & Skin Transformer)",
+            "reason": f"Detected human portrait ({width}x{height}, {conf*100:.0f}% confidence). SeedVR2 generative diffusion DiT synthesizes photorealistic skin micro-pores, hair strands, iris details, and sharp eyelashes.",
+            "suggestedModel": "seedvr2_ema_7b_fp16",
+            "modelDisplayName": "SeedVR2 7B (Generative SOTA Portrait)",
             "confidence": conf
         }
 

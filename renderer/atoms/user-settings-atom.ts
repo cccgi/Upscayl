@@ -11,7 +11,7 @@ export const customModelsPathAtom = atomWithStorage<string | null>(
 
 export const selectedModelIdAtom = atomWithStorage<ModelId | string>(
   "selectedModelId",
-  "seedvr2_ema_3b_fp16",
+  "seedvr2_ema_7b_fp16",
 );
 
 export const autoSelectModelAtom = atomWithStorage<boolean>(

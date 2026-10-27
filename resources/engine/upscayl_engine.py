@@ -311,14 +311,14 @@ def run_seedvr2_upscale(
     in_short = min(in_w, in_h)
 
     # Calculate optimal target short-edge resolution:
-    # SeedVR2 DiT diffusion transformer is natively trained on 1080p short-edge.
-    # At 1080p it completes in ~20 seconds with pristine micro-detail and ZERO VRAM paging.
-    # Higher native latent resolutions (e.g. 2160p) require >40GB VRAM and trigger heavy OS paging (25+ min stall).
+    # High-resolution DiT synthesis up to 2160p (4K short edge) provides pristine micro-details.
+    # For target_res > 1080, BlockSwap (16 blocks) and VAE tiling keep VRAM strictly within 18GB without thrashing.
     if resolution is None or resolution <= 0:
         desired_res = int(round(in_short * target_scale))
-        target_res = min(1080, max(720, desired_res))
-        if in_short > 1080:
-            target_res = min(1280, in_short)
+        if in_short >= 2160:
+            target_res = 2160
+        else:
+            target_res = min(2160, max(in_short, desired_res))
     else:
         target_res = resolution
 
@@ -458,6 +458,12 @@ def run_seedvr2_upscale(
             elif target_scale and target_scale > 1.0:
                 final_w = int(round(in_w * target_scale))
                 final_h = int(round(in_h * target_scale))
+                # Safety cap: prevent accidental gigapixel memory exhaustion
+                max_edge = 16384
+                if final_w > max_edge or final_h > max_edge:
+                    scale_down = min(max_edge / final_w, max_edge / final_h)
+                    final_w = int(round(final_w * scale_down))
+                    final_h = int(round(final_h * scale_down))
                 need_resize = (curr_w != final_w or curr_h != final_h)
 
             if need_resize:
